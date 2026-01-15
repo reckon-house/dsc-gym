@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("TRAINER") // ADMIN or TRAINER
+  createdAt    DateTime @default(now())
+
+  trainer Trainer?
+}
+
+model Trainer {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  athletes  Athlete[]
+  sessions  Session[]
+}
+
+model Athlete {
+  id        String    @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String    @unique
+  address   String?
+  trainerId String?
+  trainer   Trainer?  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+  checkIns  CheckIn[]
+  createdAt DateTime  @default(now())
+}
+
+model Session {
+  id                String    @id @default(cuid())
+  trainerId         String
+  athleteId         String
+  scheduledAt       DateTime
+  duration          Int       @default(60)
+  isRecurring       Boolean   @default(false)
+  recurrencePattern String?
+  recurrenceEndDate DateTime?
+  parentSessionId   String?
+  completed         Boolean   @default(false)
+  completedAt       DateTime?
+  cancelled         Boolean   @default(false)
+  notes             String?
+  createdAt         DateTime  @default(now())
+
+  trainer       Trainer   @relation(fields: [trainerId], references: [id])
+  athlete       Athlete   @relation(fields: [athleteId], references: [id])
+  parentSession Session?  @relation("RecurringSessions", fields: [parentSessionId], references: [id])
+  childSessions Session[] @relation("RecurringSessions")
+  checkIn       CheckIn?
+}
+
+model CheckIn {
+  id          String   @id @default(cuid())
+  athleteId   String
+  sessionId   String?  @unique
+  checkInTime DateTime @default(now())
+  matched     Boolean  @default(false)
+
+  athlete Athlete  @relation(fields: [athleteId], references: [id])
+  session Session? @relation(fields: [sessionId], references: [id])
+}
