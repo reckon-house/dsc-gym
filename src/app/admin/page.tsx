@@ -73,12 +73,23 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<{ name: string } | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [lastAction, setLastAction] = useState<ActionHistory | null>(null)
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     fetchUser()
     fetchTrainers()
   }, [])
+
+  // Auto-refresh every 10 seconds when enabled
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(() => {
+      fetchTrainers()
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [autoRefresh])
 
   async function fetchUser() {
     const res = await fetch('/api/auth/me')
@@ -93,6 +104,7 @@ export default function AdminDashboard() {
     const data = await res.json()
     if (data.success) {
       setTrainers(data.data)
+      setLastRefresh(new Date())
     }
   }
 
@@ -322,6 +334,27 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold">DSC Admin Dashboard</h1>
           <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm">
+              <button
+                onClick={() => fetchTrainers()}
+                className="px-2 py-1 bg-gray-800 rounded hover:bg-gray-700"
+                title="Refresh now"
+              >
+                Refresh
+              </button>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-300">Auto</span>
+              </label>
+              <span className="text-gray-400 text-xs">
+                {lastRefresh.toLocaleTimeString()}
+              </span>
+            </div>
             <span>{user?.name}</span>
             <button
               onClick={handleLogout}
