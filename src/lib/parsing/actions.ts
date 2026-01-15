@@ -1,5 +1,29 @@
 import { db } from '@/lib/db'
-import type { ParseResult, ParsedSession } from '@/types'
+import type { ParseResult, ParsedSession, ParsedQuery } from '@/types'
+
+export interface QueryResultData {
+  sessions?: Array<{
+    id: string
+    athleteName: string
+    scheduledAt: string
+    duration: number
+    completed: boolean
+    cancelled: boolean
+  }>
+  athletes?: Array<{
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  }>
+  count?: number
+  summary?: {
+    totalSessions: number
+    completedSessions: number
+    upcomingSessions: number
+    totalAthletes: number
+  }
+}
 
 export interface ExecutionResult {
   success: boolean
@@ -8,6 +32,7 @@ export interface ExecutionResult {
     session?: { id: string }
     sessions?: { id: string }[]
     athlete?: { id: string; firstName: string; lastName: string }
+    queryResult?: QueryResultData
   }
   error?: string
 }
@@ -34,8 +59,13 @@ export async function executeAction(
       }
       return createAthlete(data.athlete, trainerId)
 
-    case 'UNKNOWN':
     case 'QUERY':
+      if (!data.query) {
+        return { success: false, message: 'No query data provided', error: 'Missing query data' }
+      }
+      return executeQuery(data.query, trainerId)
+
+    case 'UNKNOWN':
     default:
       return {
         success: false,
@@ -317,6 +347,191 @@ async function createAthlete(
     return {
       success: false,
       message: 'Failed to create athlete',
+      error: String(error),
+    }
+  }
+}
+
+async function executeQuery(
+  query: ParsedQuery,
+  trainerId: string
+): Promise<ExecutionResult> {
+  try {
+    const { queryType, filters } = query
+
+    switch (queryType) {
+      case 'SESSIONS_LIST': {
+        const whereClause: Record<string, unknown> = { trainerId }
+
+        // Apply date filters
+        if (filters.dateFrom || filters.dateTo) {
+          whereClause.scheduledAt = {}
+          if (filters.dateFrom) {
+            (whereClause.scheduledAt as Record<string, Date>).gte = new Date(filters.dateFrom)
+          }
+          if (filters.dateTo) {
+            (whereClause.scheduledAt as Record<string, Date>).lte = new Date(filters.dateTo)
+          }
+        }
+
+        // Apply athlete filter
+        if (filters.athleteId) {
+          whereClause.athleteId = filters.athleteId
+        }
+
+        // Apply status filter
+        if (filters.status === 'completed') {
+          whereClause.completed = true
+          whereClause.cancelled = false
+        } else if (filters.status === 'upcoming') {
+          whereClause.completed = false
+          whereClause.cancelled = false
+        } else if (filters.status === 'cancelled') {
+          whereClause.cancelled = true
+        }
+        // 'all' = no filter
+
+        const sessions = await db.session.findMany({
+          where: whereClause,
+          include: { athlete: true },
+          orderBy: { scheduledAt: 'asc' },
+          take: 50,
+        })
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: {
+              sessions: sessions.map(s => ({
+                id: s.id,
+                athleteName: `${s.athlete.firstName} ${s.athlete.lastName}`,
+                scheduledAt: s.scheduledAt.toISOString(),
+                duration: s.duration,
+                completed: s.completed,
+                cancelled: s.cancelled,
+              })),
+            },
+          },
+        }
+      }
+
+      case 'SESSIONS_COUNT': {
+        const whereClause: Record<string, unknown> = { trainerId }
+
+        if (filters.dateFrom || filters.dateTo) {
+          whereClause.scheduledAt = {}
+          if (filters.dateFrom) {
+            (whereClause.scheduledAt as Record<string, Date>).gte = new Date(filters.dateFrom)
+          }
+          if (filters.dateTo) {
+            (whereClause.scheduledAt as Record<string, Date>).lte = new Date(filters.dateTo)
+          }
+        }
+
+        if (filters.athleteId) {
+          whereClause.athleteId = filters.athleteId
+        }
+
+        if (filters.status === 'completed') {
+          whereClause.completed = true
+          whereClause.cancelled = false
+        } else if (filters.status === 'upcoming') {
+          whereClause.completed = false
+          whereClause.cancelled = false
+        } else if (filters.status === 'cancelled') {
+          whereClause.cancelled = true
+        }
+
+        const count = await db.session.count({ where: whereClause })
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: { count },
+          },
+        }
+      }
+
+      case 'ATHLETES_LIST': {
+        const athletes = await db.athlete.findMany({
+          where: { trainerId },
+          orderBy: { firstName: 'asc' },
+        })
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: {
+              athletes: athletes.map(a => ({
+                id: a.id,
+                firstName: a.firstName,
+                lastName: a.lastName,
+                email: a.email,
+              })),
+            },
+          },
+        }
+      }
+
+      case 'ATHLETES_COUNT': {
+        const count = await db.athlete.count({ where: { trainerId } })
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: { count },
+          },
+        }
+      }
+
+      case 'SCHEDULE_SUMMARY': {
+        const now = new Date()
+        const [totalSessions, completedSessions, upcomingSessions, totalAthletes] = await Promise.all([
+          db.session.count({ where: { trainerId } }),
+          db.session.count({ where: { trainerId, completed: true } }),
+          db.session.count({
+            where: {
+              trainerId,
+              completed: false,
+              cancelled: false,
+              scheduledAt: { gte: now },
+            }
+          }),
+          db.athlete.count({ where: { trainerId } }),
+        ])
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: {
+              summary: {
+                totalSessions,
+                completedSessions,
+                upcomingSessions,
+                totalAthletes,
+              },
+            },
+          },
+        }
+      }
+
+      default:
+        return {
+          success: false,
+          message: 'Unknown query type',
+          error: `Query type ${queryType} not supported`,
+        }
+    }
+  } catch (error) {
+    console.error('Error executing query:', error)
+    return {
+      success: false,
+      message: 'Failed to execute query',
       error: String(error),
     }
   }

@@ -40,12 +40,33 @@ export interface ParsedAthlete {
   email?: string
 }
 
+// Query types for trainer queries
+export type QueryType =
+  | 'SESSIONS_LIST'      // List sessions with filters
+  | 'SESSIONS_COUNT'     // Count sessions
+  | 'ATHLETES_LIST'      // List athletes
+  | 'ATHLETES_COUNT'     // Count athletes
+  | 'SCHEDULE_SUMMARY'   // Schedule overview
+
+export interface ParsedQuery {
+  queryType: QueryType
+  filters: {
+    athleteId?: string
+    athleteName?: string
+    dateFrom?: string      // ISO date
+    dateTo?: string        // ISO date
+    status?: 'all' | 'completed' | 'upcoming' | 'cancelled'
+  }
+  description: string      // Human readable description of what's being queried
+}
+
 export interface ParseResult {
   action: ParsedAction
   confidence: number
   data: {
     session?: ParsedSession
     athlete?: ParsedAthlete
+    query?: ParsedQuery
   }
   clarificationNeeded?: string
   humanReadableSummary: string
