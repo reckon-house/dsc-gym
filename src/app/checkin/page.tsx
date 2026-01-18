@@ -93,17 +93,13 @@ export default function CheckinPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Header with Logo */}
-      <header className="bg-white py-6 px-4 flex flex-col items-center">
+      <header className="bg-white py-8 px-4 flex flex-col items-center">
         <Image
           src="/dsc-logo.svg"
           alt="Dallas Sports Collective"
-          width={80}
-          height={80}
-          className="mb-2"
+          width={120}
+          height={120}
         />
-        <h1 className="text-black text-sm font-bold tracking-[0.3em] uppercase">
-          Dallas Sports Collective
-        </h1>
       </header>
 
       {/* Main Content with Background Image */}
