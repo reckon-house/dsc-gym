@@ -97,8 +97,8 @@ export default function CheckinPage() {
         <Image
           src="/dsc-logo.svg"
           alt="Dallas Sports Collective"
-          width={120}
-          height={120}
+          width={240}
+          height={240}
         />
       </header>
 
