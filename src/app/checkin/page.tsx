@@ -116,21 +116,21 @@ export default function CheckinPage() {
         </div>
 
         {/* Overlay Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 py-12">
+        <div className="relative z-10 flex flex-col items-center justify-end h-full px-4 pb-24">
           {/* Input State */}
           {state === 'input' && (
-            <form onSubmit={handleCheckin} className="w-full max-w-md space-y-4">
+            <form onSubmit={handleCheckin} className="w-full max-w-sm space-y-3 mb-6">
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ENTER EMAIL"
-                className="w-full px-6 py-5 text-lg font-bold tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 placeholder:font-bold"
+                className="w-full px-5 py-3 text-base font-bold tracking-wider text-center bg-white rounded-[25px] focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 placeholder:font-bold"
                 autoFocus
               />
               <button
                 type="submit"
-                className="w-full px-6 py-5 text-lg font-black tracking-wider bg-black text-white rounded-full hover:bg-gray-900 transition-colors"
+                className="w-full px-5 py-3 text-base font-black tracking-wider bg-black text-white rounded-[25px] hover:bg-gray-900 transition-colors"
               >
                 SUBMIT
               </button>
@@ -235,8 +235,8 @@ export default function CheckinPage() {
         </div>
 
         {/* Bottom Tagline */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/60 py-4">
-          <p className="text-white text-center text-sm tracking-[0.4em] uppercase">
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 py-5">
+          <p className="text-white text-center text-xl font-semibold tracking-[0.3em] uppercase">
             Unlock Your Peak Performance
           </p>
         </div>
