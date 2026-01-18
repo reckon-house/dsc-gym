@@ -399,5 +399,151 @@ Input: "Move all athletes from Mike to Sarah"
   "isQuery": false
 }
 
+Input: "Add athletes Jamie Simpson and Denis Wilson to Mike's roster"
+{
+  "operations": [
+    {
+      "model": "Athlete",
+      "method": "create",
+      "args": {
+        "data": {
+          "firstName": "Jamie",
+          "lastName": "Simpson",
+          "email": "jamie.simpson@example.com",
+          "trainerId": "mikes-trainer-id"
+        }
+      },
+      "description": "Create athlete Jamie Simpson assigned to Mike"
+    },
+    {
+      "model": "Athlete",
+      "method": "create",
+      "args": {
+        "data": {
+          "firstName": "Denis",
+          "lastName": "Wilson",
+          "email": "denis.wilson@example.com",
+          "trainerId": "mikes-trainer-id"
+        }
+      },
+      "description": "Create athlete Denis Wilson assigned to Mike"
+    }
+  ],
+  "humanReadableSummary": "Add 2 new athletes (Jamie Simpson, Denis Wilson) to Mike's roster",
+  "clarificationNeeded": null,
+  "isQuery": false
+}
+
+Input: "Schedule Marcus Chen with Mike every Monday at 10am for the next 4 weeks"
+{
+  "operations": [
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "mikes-trainer-id",
+          "athleteId": "marcus-chen-athlete-id",
+          "scheduledAt": "2024-01-22T16:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create session for Monday Jan 22 at 10am local"
+    },
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "mikes-trainer-id",
+          "athleteId": "marcus-chen-athlete-id",
+          "scheduledAt": "2024-01-29T16:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create session for Monday Jan 29 at 10am local"
+    },
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "mikes-trainer-id",
+          "athleteId": "marcus-chen-athlete-id",
+          "scheduledAt": "2024-02-05T16:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create session for Monday Feb 5 at 10am local"
+    },
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "mikes-trainer-id",
+          "athleteId": "marcus-chen-athlete-id",
+          "scheduledAt": "2024-02-12T16:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create session for Monday Feb 12 at 10am local"
+    }
+  ],
+  "humanReadableSummary": "Scheduled Marcus Chen with Mike every Monday at 10am for the next 4 weeks (Jan 22, 29, Feb 5, 12)",
+  "clarificationNeeded": null,
+  "isQuery": false
+}
+
+Input: "I need a session every Monday at 10am for Marcus Chen with Mike Johnson, and Tuesdays at 8am for Zoe Campbell with Emily Brown"
+{
+  "operations": [
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "mikes-trainer-id",
+          "athleteId": "marcus-chen-athlete-id",
+          "scheduledAt": "2024-01-22T16:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create Monday 10am session for Marcus Chen with Mike"
+    },
+    {
+      "model": "Session",
+      "method": "create",
+      "args": {
+        "data": {
+          "trainerId": "emily-browns-trainer-id",
+          "athleteId": "zoe-campbell-athlete-id",
+          "scheduledAt": "2024-01-23T14:00:00.000Z",
+          "duration": 60,
+          "isRecurring": true,
+          "recurrencePattern": "WEEKLY"
+        }
+      },
+      "description": "Create Tuesday 8am session for Zoe Campbell with Emily"
+    }
+  ],
+  "humanReadableSummary": "Created recurring sessions: Marcus Chen with Mike (Mondays 10am), Zoe Campbell with Emily (Tuesdays 8am)",
+  "clarificationNeeded": null,
+  "isQuery": false
+}
+
+## Handling Complex Multi-Part Commands
+When the user gives a complex command with multiple parts (e.g., "schedule X for Y, and also add athletes A, B, C"), break it down into separate operations. Execute ALL parts in a single response. If any part is unclear, ask for clarification about that specific part while still executing the clear parts.
+
 IMPORTANT: Return ONLY the JSON object. No markdown code blocks. No explanations outside the JSON.`
 }
