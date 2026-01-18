@@ -125,7 +125,13 @@ export async function POST(request: NextRequest) {
     const response = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022',
       max_tokens: 1024,
-      system: systemPrompt,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages: [{ role: 'user', content: text }],
     })
 
