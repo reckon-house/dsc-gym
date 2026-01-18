@@ -225,6 +225,39 @@ Input: "Add trainer Jack White, email jackwhite@gmail.com, password mypassword12
   "isQuery": false
 }
 
+Input: "Add trainer Jack White with athlete John Smith (john@email.com)"
+{
+  "operations": [
+    {
+      "model": "User",
+      "method": "create",
+      "args": {
+        "data": {
+          "email": "jack.white@dsc.com",
+          "passwordHash": "$HASH_PLACEHOLDER$",
+          "name": "Jack White",
+          "role": "TRAINER",
+          "trainer": {
+            "create": {
+              "athletes": {
+                "create": {
+                  "firstName": "John",
+                  "lastName": "Smith",
+                  "email": "john@email.com"
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "Create trainer Jack White with athlete John Smith"
+    }
+  ],
+  "humanReadableSummary": "Create new trainer Jack White with athlete John Smith (john@email.com)",
+  "clarificationNeeded": null,
+  "isQuery": false
+}
+
 Input: "Move John Smith's 9am session with Mike to 10am" (assuming timezone is UTC-6)
 {
   "operations": [
