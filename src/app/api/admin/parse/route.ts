@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { buildAdminSystemPrompt } from '@/lib/parsing/admin-prompts'
+import { getStaticAdminPrompt, buildDynamicAdminContext } from '@/lib/parsing/admin-prompts'
 import { executeAdminAction, AdminParseResult } from '@/lib/parsing/admin-actions'
 
 export async function POST(request: NextRequest) {
@@ -116,7 +116,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Claude to parse the command
-    const systemPrompt = buildAdminSystemPrompt(context)
+    // Use split prompts for optimal caching:
+    // - Static prompt (instructions, schema, examples) is cached
+    // - Dynamic context (trainers, athletes, sessions) is not cached
+    const staticPrompt = getStaticAdminPrompt()
+    const dynamicContext = buildDynamicAdminContext(context)
 
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -128,8 +132,13 @@ export async function POST(request: NextRequest) {
       system: [
         {
           type: 'text',
-          text: systemPrompt,
+          text: staticPrompt,
           cache_control: { type: 'ephemeral' },
+        },
+        {
+          type: 'text',
+          text: dynamicContext,
+          // No cache_control - this changes frequently
         },
       ],
       messages: [{ role: 'user', content: text }],

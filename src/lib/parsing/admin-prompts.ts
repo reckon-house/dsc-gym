@@ -27,36 +27,12 @@ export interface AdminParsingContext {
   }>
 }
 
-export function buildAdminSystemPrompt(context: AdminParsingContext): string {
-  const { currentDate, localTime, timezone, timezoneOffsetHours, trainers, allAthletes, upcomingSessions } = context
-
-  const trainerList = trainers
-    .map((t) => `  - "${t.name}" (trainerId: ${t.id}, userId: ${t.userId}, email: ${t.email})`)
-    .join('\n')
-
-  const athleteList =
-    allAthletes.length > 0
-      ? allAthletes
-          .slice(0, 50)
-          .map(
-            (a) =>
-              `  - "${a.firstName} ${a.lastName}" (trainer: ${a.trainerName}, athleteId: ${a.id}, trainerId: ${a.trainerId})`
-          )
-          .join('\n')
-      : '  (No athletes yet)'
-
-  const sessionList =
-    upcomingSessions && upcomingSessions.length > 0
-      ? upcomingSessions
-          .map((s) => {
-            const date = new Date(s.scheduledAt)
-            const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-            const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-            return `  - sessionId: ${s.id} | ${s.athleteName} with ${s.trainerName} | ${dateStr} at ${timeStr}`
-          })
-          .join('\n')
-      : '  (No upcoming sessions)'
-
+/**
+ * Returns the static portion of the admin system prompt.
+ * This includes instructions, personality, schema, and examples.
+ * This part should be cached as it doesn't change between requests.
+ */
+export function getStaticAdminPrompt(): string {
   return `You are an admin assistant for a gym management system called DSC (D Sport Collective). You can perform database operations the admin requests.
 
 ## Your Personality
@@ -86,18 +62,6 @@ Examples of things you cannot do:
 - Integrate with external systems
 - Manage equipment or inventory
 - Handle membership plans
-
-## Current Context
-- Current date and time (UTC): ${currentDate}
-- Local time: ${localTime}
-- Timezone: ${timezone} (offset: ${timezoneOffsetHours} hours from UTC)
-- **IMPORTANT**: When the user says a time like "10am", they mean 10am LOCAL time. To convert to UTC for the database, ${timezoneOffsetHours > 0 ? `ADD ${timezoneOffsetHours} hours` : `SUBTRACT ${-timezoneOffsetHours} hours`}. For example, 10:00 AM local = ${timezoneOffsetHours > 0 ? `${10 + timezoneOffsetHours}:00` : `${10 - (-timezoneOffsetHours)}:00`} UTC.
-- Trainers in the system:
-${trainerList}
-- Athletes (sample):
-${athleteList}
-- Upcoming sessions (today and tomorrow):
-${sessionList}
 
 ## Database Schema (Prisma)
 You have access to these models:
@@ -167,7 +131,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 ## Guidelines
 1. Match names flexibly (e.g., "Mike" -> "Mike Johnson" if there's only one Mike)
-2. Parse relative dates: "tomorrow", "next Monday", "this Friday", etc. relative to ${currentDate}
+2. Parse relative dates: "tomorrow", "next Monday", "this Friday", etc. relative to the current date provided in the Context section
 3. For new trainers: create User with role="TRAINER" and linked Trainer record.
    - If admin provides a custom email, use it. Otherwise use format: firstname.lastname@dsc.com
    - If admin provides a custom password, use passwordHash: "$PASSWORD:thepassword$" (e.g., "$PASSWORD:password123$"). Otherwise use "$HASH_PLACEHOLDER$" for default password "trainer123"
@@ -607,4 +571,60 @@ Input: "I need a session every Monday at 10am for Marcus Chen with Mike Johnson,
 When the user gives a complex command with multiple parts (e.g., "schedule X for Y, and also add athletes A, B, C"), break it down into separate operations. Execute ALL parts in a single response. If any part is unclear, ask for clarification about that specific part while still executing the clear parts.
 
 IMPORTANT: Return ONLY the JSON object. No markdown code blocks. No explanations outside the JSON.`
+}
+
+/**
+ * Builds the dynamic context portion of the admin system prompt.
+ * This includes current date/time, trainers, athletes, and sessions.
+ * This part should NOT be cached as it changes frequently.
+ */
+export function buildDynamicAdminContext(context: AdminParsingContext): string {
+  const { currentDate, localTime, timezone, timezoneOffsetHours, trainers, allAthletes, upcomingSessions } = context
+
+  const trainerList = trainers
+    .map((t) => `  - "${t.name}" (trainerId: ${t.id}, userId: ${t.userId}, email: ${t.email})`)
+    .join('\n')
+
+  const athleteList =
+    allAthletes.length > 0
+      ? allAthletes
+          .slice(0, 50)
+          .map(
+            (a) =>
+              `  - "${a.firstName} ${a.lastName}" (trainer: ${a.trainerName}, athleteId: ${a.id}, trainerId: ${a.trainerId})`
+          )
+          .join('\n')
+      : '  (No athletes yet)'
+
+  const sessionList =
+    upcomingSessions && upcomingSessions.length > 0
+      ? upcomingSessions
+          .map((s) => {
+            const date = new Date(s.scheduledAt)
+            const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+            const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+            return `  - sessionId: ${s.id} | ${s.athleteName} with ${s.trainerName} | ${dateStr} at ${timeStr}`
+          })
+          .join('\n')
+      : '  (No upcoming sessions)'
+
+  return `## Current Context
+- Current date and time (UTC): ${currentDate}
+- Local time: ${localTime}
+- Timezone: ${timezone} (offset: ${timezoneOffsetHours} hours from UTC)
+- **IMPORTANT**: When the user says a time like "10am", they mean 10am LOCAL time. To convert to UTC for the database, ${timezoneOffsetHours > 0 ? `ADD ${timezoneOffsetHours} hours` : `SUBTRACT ${-timezoneOffsetHours} hours`}. For example, 10:00 AM local = ${timezoneOffsetHours > 0 ? `${10 + timezoneOffsetHours}:00` : `${10 - (-timezoneOffsetHours)}:00`} UTC.
+- Trainers in the system:
+${trainerList}
+- Athletes (sample):
+${athleteList}
+- Upcoming sessions (today and tomorrow):
+${sessionList}`
+}
+
+/**
+ * Legacy function that builds the complete prompt (for backwards compatibility).
+ * Prefer using getStaticAdminPrompt() + buildDynamicAdminContext() separately for prompt caching.
+ */
+export function buildAdminSystemPrompt(context: AdminParsingContext): string {
+  return getStaticAdminPrompt() + '\n\n' + buildDynamicAdminContext(context)
 }

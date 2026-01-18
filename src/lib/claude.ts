@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { buildSystemPrompt, type ParsingContext } from './parsing/prompts'
+import { getStaticTrainerPrompt, buildDynamicTrainerContext, type ParsingContext } from './parsing/prompts'
 import { parseClaudeResponse } from './parsing/schema'
 import type { ParseResult } from '@/types'
 
@@ -11,7 +11,11 @@ export async function parseSchedulingInput(
   input: string,
   context: ParsingContext
 ): Promise<ParseResult> {
-  const systemPrompt = buildSystemPrompt(context)
+  // Use split prompts for optimal caching:
+  // - Static prompt (instructions, schema, examples) is cached
+  // - Dynamic context (current date, trainer, athletes) is not cached
+  const staticPrompt = getStaticTrainerPrompt()
+  const dynamicContext = buildDynamicTrainerContext(context)
 
   try {
     const response = await anthropic.messages.create({
@@ -20,8 +24,13 @@ export async function parseSchedulingInput(
       system: [
         {
           type: 'text',
-          text: systemPrompt,
+          text: staticPrompt,
           cache_control: { type: 'ephemeral' },
+        },
+        {
+          type: 'text',
+          text: dynamicContext,
+          // No cache_control - this changes frequently
         },
       ],
       messages: [

@@ -10,26 +10,13 @@ export interface ParsingContext {
   currentDate: string
 }
 
-export function buildSystemPrompt(context: ParsingContext): string {
-  const { trainerName, existingAthletes, currentDate } = context
-
-  const athleteList =
-    existingAthletes.length > 0
-      ? existingAthletes
-          .map(
-            (a) =>
-              `  - "${a.firstName} ${a.lastName}" (ID: ${a.id}, email: ${a.email})`
-          )
-          .join('\n')
-      : '  (No athletes yet)'
-
+/**
+ * Returns the static portion of the trainer system prompt.
+ * This includes instructions, schema, and examples.
+ * This part should be cached as it doesn't change between requests.
+ */
+export function getStaticTrainerPrompt(): string {
   return `You are a scheduling assistant for a gym management system. Parse natural language requests into structured JSON.
-
-## Context
-- Current date and time: ${currentDate}
-- Trainer: ${trainerName}
-- Known athletes for this trainer:
-${athleteList}
 
 ## Your Task
 Parse the user's request and return ONLY valid JSON (no markdown, no explanation, just the JSON object).
@@ -278,4 +265,37 @@ Input: "Which athletes are skipping check-ins?"
 }
 
 IMPORTANT: Return ONLY the JSON object, no markdown code blocks, no explanations.`
+}
+
+/**
+ * Builds the dynamic context portion of the trainer system prompt.
+ * This includes current date/time, trainer name, and athletes list.
+ * This part should NOT be cached as it changes between trainers and requests.
+ */
+export function buildDynamicTrainerContext(context: ParsingContext): string {
+  const { trainerName, existingAthletes, currentDate } = context
+
+  const athleteList =
+    existingAthletes.length > 0
+      ? existingAthletes
+          .map(
+            (a) =>
+              `  - "${a.firstName} ${a.lastName}" (ID: ${a.id}, email: ${a.email})`
+          )
+          .join('\n')
+      : '  (No athletes yet)'
+
+  return `## Context
+- Current date and time: ${currentDate}
+- Trainer: ${trainerName}
+- Known athletes for this trainer:
+${athleteList}`
+}
+
+/**
+ * Legacy function that builds the complete prompt (for backwards compatibility).
+ * Prefer using getStaticTrainerPrompt() + buildDynamicTrainerContext() separately for prompt caching.
+ */
+export function buildSystemPrompt(context: ParsingContext): string {
+  return getStaticTrainerPrompt() + '\n\n' + buildDynamicTrainerContext(context)
 }
