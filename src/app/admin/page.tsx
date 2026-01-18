@@ -65,6 +65,11 @@ export default function AdminDashboard() {
   const [assigningWalkIn, setAssigningWalkIn] = useState<string | null>(null)
   const router = useRouter()
 
+  // Command input state
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
   // Accordion states
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [trainersOpen, setTrainersOpen] = useState(false)
@@ -168,6 +173,42 @@ export default function AdminDashboard() {
     router.push('/login')
   }
 
+  async function handleCommand() {
+    if (!input.trim()) return
+
+    setLoading(true)
+    setResult(null)
+
+    try {
+      const res = await fetch('/api/admin/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input, execute: true }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        const message = data.execution?.message || data.parsed?.humanReadableSummary || 'Done!'
+        setResult({ success: true, message })
+        setInput('')
+        // Refresh data
+        fetchTrainers()
+        fetchSessions()
+        fetchWalkIns()
+      } else {
+        setResult({
+          success: false,
+          message: data.error || data.parsed?.clarificationNeeded || 'Command failed'
+        })
+      }
+    } catch (error) {
+      console.error('Command error:', error)
+      setResult({ success: false, message: 'An error occurred' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Get all athletes from all trainers
   const allAthletes = trainers.flatMap(t =>
     t.athletes?.map(a => ({ ...a, trainerName: t.user.name })) || []
@@ -258,7 +299,40 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto py-8">
+      <main className="max-w-4xl mx-auto py-8 px-4">
+        {/* Command Input */}
+        <div className="mb-8">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !loading) {
+                  handleCommand()
+                }
+              }}
+              placeholder="Type a command... (e.g., 'Show all athletes', 'Add trainer John Doe')"
+              className="flex-1 px-4 py-3 border-2 border-black rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-black"
+              disabled={loading}
+            />
+            <button
+              onClick={handleCommand}
+              disabled={loading || !input.trim()}
+              className="px-6 py-3 bg-black text-white font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? '...' : 'Go'}
+            </button>
+          </div>
+          {result && (
+            <div className={`mt-3 p-3 rounded-lg ${
+              result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+            }`}>
+              {result.message}
+            </div>
+          )}
+        </div>
+
         {/* CALENDAR Accordion */}
         <div className="border-b-4 border-black">
           <button
