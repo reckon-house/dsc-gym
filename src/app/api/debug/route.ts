@@ -11,8 +11,8 @@ export async function GET() {
   if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
     try {
       const adapter = new PrismaLibSql({
-        url: process.env.TURSO_DATABASE_URL,
-        authToken: process.env.TURSO_AUTH_TOKEN,
+        url: process.env.TURSO_DATABASE_URL.trim(),
+        authToken: process.env.TURSO_AUTH_TOKEN.trim(),
       })
       const prisma = new PrismaClient({ adapter })
       const count = await prisma.user.count()
