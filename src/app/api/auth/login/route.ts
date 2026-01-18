@@ -28,8 +28,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Login error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred'
     return NextResponse.json(
-      { success: false, error: 'An error occurred' },
+      { success: false, error: errorMessage },
       { status: 500 }
     )
   }

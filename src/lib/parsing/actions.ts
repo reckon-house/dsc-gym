@@ -16,6 +16,23 @@ export interface QueryResultData {
     lastName: string
     email: string
   }>
+  checkIns?: Array<{
+    id: string
+    athleteName: string
+    checkInTime: string
+    matchedSession: boolean
+  }>
+  attendanceReport?: {
+    totalSessionsInPeriod: number
+    checkedInCount: number
+    missedCount: number
+    athletesWithMissedSessions: Array<{
+      athleteId: string
+      athleteName: string
+      missedCount: number
+      totalSessions: number
+    }>
+  }
   count?: number
   summary?: {
     totalSessions: number
@@ -58,6 +75,12 @@ export async function executeAction(
         return { success: false, message: 'No athlete data provided', error: 'Missing athlete data' }
       }
       return createAthlete(data.athlete, trainerId)
+
+    case 'DELETE_ATHLETE':
+      if (!data.athlete) {
+        return { success: false, message: 'No athlete data provided', error: 'Missing athlete data' }
+      }
+      return deleteAthlete(data.athlete, trainerId)
 
     case 'QUERY':
       if (!data.query) {
@@ -352,6 +375,85 @@ async function createAthlete(
   }
 }
 
+async function deleteAthlete(
+  athleteData: { id?: string | null; firstName: string; lastName: string },
+  trainerId: string
+): Promise<ExecutionResult> {
+  try {
+    let athleteId = athleteData.id
+
+    // If no ID provided, try to find by name
+    if (!athleteId) {
+      const athlete = await db.athlete.findFirst({
+        where: {
+          trainerId,
+          firstName: { equals: athleteData.firstName, mode: 'insensitive' },
+          lastName: { equals: athleteData.lastName, mode: 'insensitive' },
+        },
+      })
+
+      if (!athlete) {
+        return {
+          success: false,
+          message: `Could not find athlete ${athleteData.firstName} ${athleteData.lastName}`,
+          error: 'Athlete not found',
+        }
+      }
+      athleteId = athlete.id
+    }
+
+    // Verify the athlete belongs to this trainer
+    const athlete = await db.athlete.findFirst({
+      where: {
+        id: athleteId,
+        trainerId,
+      },
+    })
+
+    if (!athlete) {
+      return {
+        success: false,
+        message: 'Athlete not found or does not belong to you',
+        error: 'Athlete not found',
+      }
+    }
+
+    // Delete all sessions for this athlete first (cascade)
+    await db.session.deleteMany({
+      where: { athleteId: athleteId },
+    })
+
+    // Delete all check-ins for this athlete
+    await db.checkIn.deleteMany({
+      where: { athleteId: athleteId },
+    })
+
+    // Delete the athlete
+    await db.athlete.delete({
+      where: { id: athleteId },
+    })
+
+    return {
+      success: true,
+      message: `Removed athlete ${athlete.firstName} ${athlete.lastName} and all their sessions`,
+      data: {
+        athlete: {
+          id: athlete.id,
+          firstName: athlete.firstName,
+          lastName: athlete.lastName,
+        },
+      },
+    }
+  } catch (error) {
+    console.error('Error deleting athlete:', error)
+    return {
+      success: false,
+      message: 'Failed to delete athlete',
+      error: String(error),
+    }
+  }
+}
+
 async function executeQuery(
   query: ParsedQuery,
   trainerId: string
@@ -514,6 +616,117 @@ async function executeQuery(
                 completedSessions,
                 upcomingSessions,
                 totalAthletes,
+              },
+            },
+          },
+        }
+      }
+
+      case 'CHECKINS_LIST': {
+        const whereClause: Record<string, unknown> = {
+          athlete: { trainerId },
+        }
+
+        // Apply date filters
+        if (filters.dateFrom || filters.dateTo) {
+          whereClause.checkInTime = {}
+          if (filters.dateFrom) {
+            (whereClause.checkInTime as Record<string, Date>).gte = new Date(filters.dateFrom)
+          }
+          if (filters.dateTo) {
+            (whereClause.checkInTime as Record<string, Date>).lte = new Date(filters.dateTo)
+          }
+        }
+
+        const checkIns = await db.checkIn.findMany({
+          where: whereClause,
+          include: { athlete: true },
+          orderBy: { checkInTime: 'desc' },
+          take: 100,
+        })
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: {
+              checkIns: checkIns.map(c => ({
+                id: c.id,
+                athleteName: `${c.athlete.firstName} ${c.athlete.lastName}`,
+                checkInTime: c.checkInTime.toISOString(),
+                matchedSession: c.matched,
+              })),
+            },
+          },
+        }
+      }
+
+      case 'ATTENDANCE_REPORT': {
+        // Get date range - default to last 30 days if not specified
+        const now = new Date()
+        const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        const dateTo = filters.dateTo ? new Date(filters.dateTo) : now
+
+        // Get all sessions in the period for this trainer
+        const sessions = await db.session.findMany({
+          where: {
+            trainerId,
+            scheduledAt: {
+              gte: dateFrom,
+              lte: dateTo,
+            },
+            cancelled: false,
+          },
+          include: {
+            athlete: true,
+            checkIn: true,
+          },
+        })
+
+        // Calculate attendance stats
+        const totalSessionsInPeriod = sessions.length
+        const checkedInCount = sessions.filter(s => s.checkIn !== null).length
+        const missedCount = totalSessionsInPeriod - checkedInCount
+
+        // Group by athlete to find who is missing check-ins
+        const athleteStats: Record<string, { name: string; total: number; missed: number }> = {}
+
+        for (const session of sessions) {
+          const athleteId = session.athleteId
+          if (!athleteStats[athleteId]) {
+            athleteStats[athleteId] = {
+              name: `${session.athlete.firstName} ${session.athlete.lastName}`,
+              total: 0,
+              missed: 0,
+            }
+          }
+          athleteStats[athleteId].total++
+          if (!session.checkIn) {
+            athleteStats[athleteId].missed++
+          }
+        }
+
+        // Convert to array and filter to only those with missed sessions
+        const athletesWithMissedSessions = Object.entries(athleteStats)
+          .filter(([, stats]) => stats.missed > 0)
+          .map(([athleteId, stats]) => ({
+            athleteId,
+            athleteName: stats.name,
+            missedCount: stats.missed,
+            totalSessions: stats.total,
+          }))
+          .sort((a, b) => b.missedCount - a.missedCount)
+
+        return {
+          success: true,
+          message: query.description,
+          data: {
+            queryResult: {
+              attendanceReport: {
+                totalSessionsInPeriod,
+                checkedInCount,
+                missedCount,
+                athletesWithMissedSessions,
               },
             },
           },

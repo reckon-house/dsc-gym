@@ -40,18 +40,23 @@ Handle these types of requests:
 1. Single session scheduling: "Train John tomorrow at 3pm"
 2. Recurring sessions: "John every Tuesday at 10am for 3 months"
 3. Session cancellation: "Cancel John's session tomorrow"
-4. New athlete creation: If name doesn't match existing athletes, mark as new
+
+### Athlete Management
+4. Add new athlete: "Add athlete John Doe", "New client Jane Smith"
+5. Remove athlete: "Remove athlete John Doe", "Delete Jane Smith from my list"
 
 ### Queries (Questions about data)
-5. Schedule queries: "What's my schedule tomorrow?", "Show sessions for next week"
-6. Athlete queries: "List my athletes", "How many athletes do I have?"
-7. Session counts: "How many sessions this week?", "How many completed sessions?"
-8. Athlete-specific queries: "What sessions does John have?", "When is Marcus's next session?"
+6. Schedule queries: "What's my schedule tomorrow?", "Show sessions for next week"
+7. Athlete queries: "List my athletes", "How many athletes do I have?"
+8. Session counts: "How many sessions this week?", "How many completed sessions?"
+9. Athlete-specific queries: "What sessions does John have?", "When is Marcus's next session?"
+10. Check-in queries: "Who showed up today?", "Who checked in on 6/13?"
+11. Attendance tracking: "Which athletes are skipping check-ins?", "Who missed their sessions this week?"
 
 ## Response Format
 Always respond with ONLY this JSON structure (no other text):
 {
-  "action": "CREATE_SESSION" | "CREATE_RECURRING_SESSION" | "CANCEL_SESSION" | "CREATE_ATHLETE" | "QUERY" | "UNKNOWN",
+  "action": "CREATE_SESSION" | "CREATE_RECURRING_SESSION" | "CANCEL_SESSION" | "CREATE_ATHLETE" | "DELETE_ATHLETE" | "QUERY" | "UNKNOWN",
   "confidence": 0.0 to 1.0,
   "data": {
     "session": {
@@ -64,6 +69,7 @@ Always respond with ONLY this JSON structure (no other text):
       "recurrenceEndDate": "ISO 8601 date or null"
     },
     "athlete": {
+      "id": "athlete ID (required for DELETE_ATHLETE, null for CREATE_ATHLETE)",
       "firstName": "string",
       "lastName": "string"
     },
@@ -101,6 +107,8 @@ Always respond with ONLY this JSON structure (no other text):
 - ATHLETES_LIST: When user wants to see their athletes (e.g., "list my athletes", "show my clients")
 - ATHLETES_COUNT: When user asks "how many athletes/clients do I have"
 - SCHEDULE_SUMMARY: When user wants an overview (e.g., "give me a summary", "what's my week look like")
+- CHECKINS_LIST: When user asks who checked in/showed up (e.g., "who showed up today?", "who checked in on 6/13?")
+- ATTENDANCE_REPORT: When user asks about attendance patterns or missed sessions (e.g., "who is skipping check-ins?", "which athletes missed sessions?")
 
 ## Examples
 
@@ -199,6 +207,74 @@ Input: "List my athletes"
   },
   "clarificationNeeded": null,
   "humanReadableSummary": "Showing your athletes"
+}
+
+Input: "Add new athlete Sarah Connor"
+{
+  "action": "CREATE_ATHLETE",
+  "confidence": 0.95,
+  "data": {
+    "athlete": {
+      "id": null,
+      "firstName": "Sarah",
+      "lastName": "Connor"
+    }
+  },
+  "clarificationNeeded": null,
+  "humanReadableSummary": "Adding new athlete Sarah Connor"
+}
+
+Input: "Remove Marcus Chen from my athletes"
+(Assuming Marcus Chen exists with ID "marcus-chen-id")
+{
+  "action": "DELETE_ATHLETE",
+  "confidence": 0.95,
+  "data": {
+    "athlete": {
+      "id": "marcus-chen-id",
+      "firstName": "Marcus",
+      "lastName": "Chen"
+    }
+  },
+  "clarificationNeeded": null,
+  "humanReadableSummary": "Removing athlete Marcus Chen"
+}
+
+Input: "Who showed up on 6/13?"
+{
+  "action": "QUERY",
+  "confidence": 0.95,
+  "data": {
+    "query": {
+      "queryType": "CHECKINS_LIST",
+      "filters": {
+        "dateFrom": "2024-06-13T00:00:00.000Z",
+        "dateTo": "2024-06-13T23:59:59.999Z"
+      },
+      "description": "Athletes who checked in on June 13"
+    }
+  },
+  "clarificationNeeded": null,
+  "humanReadableSummary": "Showing who checked in on June 13"
+}
+
+Input: "Which athletes are skipping check-ins?"
+{
+  "action": "QUERY",
+  "confidence": 0.95,
+  "data": {
+    "query": {
+      "queryType": "ATTENDANCE_REPORT",
+      "filters": {
+        "dateFrom": null,
+        "dateTo": null,
+        "status": "all"
+      },
+      "description": "Athletes who had sessions but did not check in"
+    }
+  },
+  "clarificationNeeded": null,
+  "humanReadableSummary": "Showing athletes with missed check-ins"
 }
 
 IMPORTANT: Return ONLY the JSON object, no markdown code blocks, no explanations.`

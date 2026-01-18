@@ -78,14 +78,27 @@ export async function POST(request: NextRequest) {
     }
 
     if (!athlete) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No athlete found. Please check your name or register first.',
-          matched: false,
+      // Create a walk-in record for unknown visitors
+      const walkIn = await db.walkIn.create({
+        data: {
+          name: name || email,
+          email: email || null,
         },
-        { status: 404 }
-      )
+      })
+
+      return NextResponse.json({
+        success: true,
+        isWalkIn: true,
+        data: {
+          walkIn: {
+            id: walkIn.id,
+            name: walkIn.name,
+            time: walkIn.checkInTime,
+          },
+        },
+        matched: false,
+        message: `Welcome! You've been checked in as a walk-in visitor. Please speak with a trainer to get set up.`,
+      })
     }
 
     // Find today's session for this athlete

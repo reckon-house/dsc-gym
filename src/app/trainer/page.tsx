@@ -22,7 +22,7 @@ interface Athlete {
   email: string
 }
 
-interface QueryResult {
+interface QueryResultData {
   sessions?: Array<{
     id: string
     athleteName: string
@@ -37,6 +37,23 @@ interface QueryResult {
     lastName: string
     email: string
   }>
+  checkIns?: Array<{
+    id: string
+    athleteName: string
+    checkInTime: string
+    matchedSession: boolean
+  }>
+  attendanceReport?: {
+    totalSessionsInPeriod: number
+    checkedInCount: number
+    missedCount: number
+    athletesWithMissedSessions: Array<{
+      athleteId: string
+      athleteName: string
+      missedCount: number
+      totalSessions: number
+    }>
+  }
   count?: number
   summary?: {
     totalSessions: number
@@ -46,13 +63,24 @@ interface QueryResult {
   }
 }
 
+interface QueryResultCard {
+  id: string
+  type: 'sessions' | 'athletes' | 'count' | 'summary' | 'checkIns' | 'attendanceReport'
+  data: QueryResultData
+  message: string
+  expanded: boolean
+  timestamp: Date
+}
+
 interface ParseResponse {
   success: boolean
   action?: string
   message?: string
   humanReadableSummary?: string
   data?: {
-    queryResult?: QueryResult
+    queryResult?: QueryResultData
+    athlete?: { id: string; firstName: string; lastName: string }
+    session?: { id: string }
   }
 }
 
@@ -61,7 +89,8 @@ export default function TrainerDashboard() {
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [parseResult, setParseResult] = useState<ParseResponse | null>(null)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [queryResults, setQueryResults] = useState<QueryResultCard[]>([])
   const [user, setUser] = useState<{ name: string } | null>(null)
   const router = useRouter()
 
@@ -96,26 +125,69 @@ export default function TrainerDashboard() {
     }
   }
 
+  function determineQueryType(queryResult: QueryResultData): QueryResultCard['type'] {
+    if (queryResult.sessions) return 'sessions'
+    if (queryResult.athletes) return 'athletes'
+    if (queryResult.checkIns) return 'checkIns'
+    if (queryResult.attendanceReport) return 'attendanceReport'
+    if (queryResult.summary) return 'summary'
+    return 'count'
+  }
+
   async function handleParse(execute = false) {
     if (!input.trim()) return
 
     setLoading(true)
+    setResult(null)
+
     try {
       const res = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: input, execute }),
       })
-      const data = await res.json()
-      setParseResult(data)
+      const data: ParseResponse = await res.json()
 
-      if (execute && data.success) {
+      // Handle query results - add to accordion cards
+      if (data.success && data.action === 'QUERY' && data.data?.queryResult) {
+        const queryResult = data.data.queryResult
+        const newCard: QueryResultCard = {
+          id: `query-${Date.now()}`,
+          type: determineQueryType(queryResult),
+          data: queryResult,
+          message: data.humanReadableSummary || data.message || 'Query results',
+          expanded: true,
+          timestamp: new Date(),
+        }
+        setQueryResults(prev => [newCard, ...prev])
+        setInput('')
+      }
+      // Handle mutations (create session, create athlete, etc)
+      else if (data.success && execute) {
+        setResult({
+          success: true,
+          message: data.humanReadableSummary || data.message || 'Done!'
+        })
         setInput('')
         fetchTodaySessions()
         fetchAthletes()
       }
+      // Handle preview or error
+      else if (!execute) {
+        setResult({
+          success: data.success,
+          message: data.humanReadableSummary || data.message || 'Preview: ' + JSON.stringify(data)
+        })
+      }
+      else {
+        setResult({
+          success: false,
+          message: data.humanReadableSummary || data.message || 'Something went wrong'
+        })
+      }
     } catch (error) {
       console.error('Parse error:', error)
+      setResult({ success: false, message: 'An error occurred' })
     } finally {
       setLoading(false)
     }
@@ -133,6 +205,22 @@ export default function TrainerDashboard() {
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
+  }
+
+  function toggleQueryResult(id: string) {
+    setQueryResults(prev =>
+      prev.map(qr =>
+        qr.id === id ? { ...qr, expanded: !qr.expanded } : qr
+      )
+    )
+  }
+
+  function removeQueryResult(id: string) {
+    setQueryResults(prev => prev.filter(qr => qr.id !== id))
+  }
+
+  function clearAllQueryResults() {
+    setQueryResults([])
   }
 
   return (
@@ -156,7 +244,10 @@ export default function TrainerDashboard() {
       <main className="max-w-6xl mx-auto p-6">
         {/* Natural Language Input */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Ask or Schedule</h2>
+          <h2 className="text-lg font-semibold mb-2">Ask or Schedule</h2>
+          <p className="text-sm text-gray-500 mb-3">
+            Try: &quot;Marcus tomorrow at 3pm&quot; &bull; &quot;Show my schedule this week&quot; &bull; &quot;Who showed up today?&quot; &bull; &quot;Which athletes are skipping check-ins?&quot;
+          </p>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -166,11 +257,11 @@ export default function TrainerDashboard() {
                 handleParse(true)
               }
             }}
-            placeholder="Try: &quot;John tomorrow at 3pm&quot; or &quot;What's my schedule?&quot; or &quot;List my athletes&quot;"
+            placeholder="Type your request... (Press Enter to execute)"
             className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black focus:border-black"
-            rows={3}
+            rows={2}
           />
-          <div className="mt-3 flex gap-3">
+          <div className="mt-3 flex items-center gap-3">
             <button
               onClick={() => handleParse(false)}
               disabled={loading || !input.trim()}
@@ -185,107 +276,269 @@ export default function TrainerDashboard() {
             >
               {loading ? 'Processing...' : 'Go'}
             </button>
+            {queryResults.length > 0 && (
+              <button
+                onClick={clearAllQueryResults}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100"
+              >
+                Clear Results
+              </button>
+            )}
           </div>
 
-          {/* Parse Result */}
-          {parseResult && (
-            <div className="mt-4">
-              {/* Summary message */}
-              {parseResult.humanReadableSummary && (
-                <div className={`p-3 rounded mb-3 ${parseResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                  {parseResult.humanReadableSummary}
-                </div>
-              )}
-
-              {/* Query Results */}
-              {parseResult.action === 'QUERY' && parseResult.data?.queryResult && (
-                <div className="p-4 bg-gray-50 rounded">
-                  {/* Sessions List */}
-                  {parseResult.data.queryResult.sessions && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Sessions ({parseResult.data.queryResult.sessions.length})</h3>
-                      {parseResult.data.queryResult.sessions.length === 0 ? (
-                        <p className="text-gray-500">No sessions found</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {parseResult.data.queryResult.sessions.map((s) => (
-                            <div key={s.id} className={`p-2 rounded ${s.completed ? 'bg-green-100' : s.cancelled ? 'bg-red-100' : 'bg-white'}`}>
-                              <span className="font-medium">{s.athleteName}</span>
-                              <span className="text-gray-600 ml-2">
-                                {new Date(s.scheduledAt).toLocaleDateString()} at{' '}
-                                {new Date(s.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                              <span className="text-gray-500 ml-2">({s.duration} min)</span>
-                              {s.completed && <span className="text-green-600 ml-2">Completed</span>}
-                              {s.cancelled && <span className="text-red-600 ml-2">Cancelled</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Athletes List */}
-                  {parseResult.data.queryResult.athletes && (
-                    <div>
-                      <h3 className="font-semibold mb-2">Athletes ({parseResult.data.queryResult.athletes.length})</h3>
-                      {parseResult.data.queryResult.athletes.length === 0 ? (
-                        <p className="text-gray-500">No athletes found</p>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {parseResult.data.queryResult.athletes.map((a) => (
-                            <div key={a.id} className="p-2 bg-white rounded">
-                              <span className="font-medium">{a.firstName} {a.lastName}</span>
-                              <span className="text-gray-500 text-sm block">{a.email}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Count */}
-                  {parseResult.data.queryResult.count !== undefined && !parseResult.data.queryResult.sessions && !parseResult.data.queryResult.athletes && (
-                    <div className="text-center py-4">
-                      <span className="text-4xl font-bold">{parseResult.data.queryResult.count}</span>
-                    </div>
-                  )}
-
-                  {/* Summary Stats */}
-                  {parseResult.data.queryResult.summary && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center p-3 bg-white rounded">
-                        <div className="text-2xl font-bold">{parseResult.data.queryResult.summary.totalAthletes}</div>
-                        <div className="text-sm text-gray-500">Athletes</div>
-                      </div>
-                      <div className="text-center p-3 bg-white rounded">
-                        <div className="text-2xl font-bold">{parseResult.data.queryResult.summary.upcomingSessions}</div>
-                        <div className="text-sm text-gray-500">Upcoming</div>
-                      </div>
-                      <div className="text-center p-3 bg-white rounded">
-                        <div className="text-2xl font-bold">{parseResult.data.queryResult.summary.completedSessions}</div>
-                        <div className="text-sm text-gray-500">Completed</div>
-                      </div>
-                      <div className="text-center p-3 bg-white rounded">
-                        <div className="text-2xl font-bold">{parseResult.data.queryResult.summary.totalSessions}</div>
-                        <div className="text-sm text-gray-500">Total Sessions</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Non-query results (scheduling confirmations, etc) */}
-              {parseResult.action !== 'QUERY' && !parseResult.humanReadableSummary && (
-                <div className="p-4 bg-gray-50 rounded">
-                  <pre className="text-sm overflow-auto">
-                    {JSON.stringify(parseResult, null, 2)}
-                  </pre>
-                </div>
-              )}
+          {/* Result message */}
+          {result && (
+            <div className={`mt-4 p-3 rounded ${
+              result.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}>
+              {result.message}
             </div>
           )}
         </div>
+
+        {/* Query Results - Accordion Cards */}
+        {queryResults.length > 0 && (
+          <div className="space-y-4 mb-6">
+            {queryResults.map((qr) => (
+              <div key={qr.id} className="bg-white rounded-lg shadow">
+                {/* Card Header */}
+                <div className="flex items-center justify-between p-4 border-b">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => toggleQueryResult(qr.id)}
+                      className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-lg"
+                      title={qr.expanded ? 'Collapse' : 'Expand'}
+                    >
+                      {qr.expanded ? '−' : '+'}
+                    </button>
+                    <div>
+                      <h3 className="font-semibold">{qr.message}</h3>
+                      <span className="text-sm text-gray-500">
+                        {qr.type === 'sessions' && qr.data.sessions && `${qr.data.sessions.length} session(s)`}
+                        {qr.type === 'athletes' && qr.data.athletes && `${qr.data.athletes.length} athlete(s)`}
+                        {qr.type === 'checkIns' && qr.data.checkIns && `${qr.data.checkIns.length} check-in(s)`}
+                        {qr.type === 'attendanceReport' && qr.data.attendanceReport && `${qr.data.attendanceReport.athletesWithMissedSessions.length} athlete(s) with missed sessions`}
+                        {qr.type === 'count' && qr.data.count !== undefined && `Count: ${qr.data.count}`}
+                        {qr.type === 'summary' && 'Summary'}
+                        {' • '}
+                        {qr.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeQueryResult(qr.id)}
+                    className="w-8 h-8 flex items-center justify-center rounded hover:bg-red-100 text-gray-400 hover:text-red-600 text-xl"
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {/* Card Content - Collapsible */}
+                {qr.expanded && (
+                  <div className="p-4">
+                    {/* Sessions List */}
+                    {qr.type === 'sessions' && qr.data.sessions && (
+                      <div className="overflow-x-auto">
+                        {qr.data.sessions.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">No sessions found</p>
+                        ) : (
+                          <table className="w-full text-left">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 font-medium text-gray-700">Date</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Time</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Athlete</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Duration</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {qr.data.sessions.map((s) => (
+                                <tr key={s.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3">
+                                    {new Date(s.scheduledAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {new Date(s.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                  </td>
+                                  <td className="px-4 py-3 font-medium">{s.athleteName}</td>
+                                  <td className="px-4 py-3 text-gray-500">{s.duration} min</td>
+                                  <td className="px-4 py-3">
+                                    {s.cancelled ? (
+                                      <span className="text-red-600">Cancelled</span>
+                                    ) : s.completed ? (
+                                      <span className="text-green-600">Completed</span>
+                                    ) : (
+                                      <span className="text-blue-600">Scheduled</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Athletes List */}
+                    {qr.type === 'athletes' && qr.data.athletes && (
+                      <div className="overflow-x-auto">
+                        {qr.data.athletes.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">No athletes found</p>
+                        ) : (
+                          <table className="w-full text-left">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 font-medium text-gray-700">Name</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Email</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {qr.data.athletes.map((a) => (
+                                <tr key={a.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 font-medium">{a.firstName} {a.lastName}</td>
+                                  <td className="px-4 py-3 text-gray-500">{a.email}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Count */}
+                    {qr.type === 'count' && qr.data.count !== undefined && (
+                      <div className="text-center py-8">
+                        <span className="text-5xl font-bold">{qr.data.count}</span>
+                      </div>
+                    )}
+
+                    {/* Summary Stats */}
+                    {qr.type === 'summary' && qr.data.summary && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center p-4 bg-gray-50 rounded">
+                          <div className="text-3xl font-bold">{qr.data.summary.totalAthletes}</div>
+                          <div className="text-sm text-gray-500">Athletes</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded">
+                          <div className="text-3xl font-bold text-blue-600">{qr.data.summary.upcomingSessions}</div>
+                          <div className="text-sm text-gray-500">Upcoming</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded">
+                          <div className="text-3xl font-bold text-green-600">{qr.data.summary.completedSessions}</div>
+                          <div className="text-sm text-gray-500">Completed</div>
+                        </div>
+                        <div className="text-center p-4 bg-gray-50 rounded">
+                          <div className="text-3xl font-bold">{qr.data.summary.totalSessions}</div>
+                          <div className="text-sm text-gray-500">Total Sessions</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Check-ins List */}
+                    {qr.type === 'checkIns' && qr.data.checkIns && (
+                      <div className="overflow-x-auto">
+                        {qr.data.checkIns.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">No check-ins found</p>
+                        ) : (
+                          <table className="w-full text-left">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 font-medium text-gray-700">Athlete</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Check-in Time</th>
+                                <th className="px-4 py-3 font-medium text-gray-700">Session Matched</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {qr.data.checkIns.map((c) => (
+                                <tr key={c.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 font-medium">{c.athleteName}</td>
+                                  <td className="px-4 py-3">
+                                    {new Date(c.checkInTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    {' '}
+                                    {new Date(c.checkInTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {c.matchedSession ? (
+                                      <span className="text-green-600">Yes</span>
+                                    ) : (
+                                      <span className="text-yellow-600">No</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Attendance Report */}
+                    {qr.type === 'attendanceReport' && qr.data.attendanceReport && (
+                      <div>
+                        {/* Summary Stats */}
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                          <div className="text-center p-4 bg-gray-50 rounded">
+                            <div className="text-3xl font-bold">{qr.data.attendanceReport.totalSessionsInPeriod}</div>
+                            <div className="text-sm text-gray-500">Total Sessions</div>
+                          </div>
+                          <div className="text-center p-4 bg-green-50 rounded">
+                            <div className="text-3xl font-bold text-green-600">{qr.data.attendanceReport.checkedInCount}</div>
+                            <div className="text-sm text-gray-500">Checked In</div>
+                          </div>
+                          <div className="text-center p-4 bg-red-50 rounded">
+                            <div className="text-3xl font-bold text-red-600">{qr.data.attendanceReport.missedCount}</div>
+                            <div className="text-sm text-gray-500">Missed Check-ins</div>
+                          </div>
+                        </div>
+
+                        {/* Athletes with missed sessions */}
+                        {qr.data.attendanceReport.athletesWithMissedSessions.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">All athletes checked in for their sessions!</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <h4 className="font-medium mb-2">Athletes with missed check-ins:</h4>
+                            <table className="w-full text-left">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-4 py-3 font-medium text-gray-700">Athlete</th>
+                                  <th className="px-4 py-3 font-medium text-gray-700">Missed</th>
+                                  <th className="px-4 py-3 font-medium text-gray-700">Total Sessions</th>
+                                  <th className="px-4 py-3 font-medium text-gray-700">Attendance Rate</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {qr.data.attendanceReport.athletesWithMissedSessions.map((a) => (
+                                  <tr key={a.athleteId} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium">{a.athleteName}</td>
+                                    <td className="px-4 py-3 text-red-600">{a.missedCount}</td>
+                                    <td className="px-4 py-3">{a.totalSessions}</td>
+                                    <td className="px-4 py-3">
+                                      <span className={`font-medium ${
+                                        ((a.totalSessions - a.missedCount) / a.totalSessions) >= 0.8
+                                          ? 'text-green-600'
+                                          : ((a.totalSessions - a.missedCount) / a.totalSessions) >= 0.5
+                                          ? 'text-yellow-600'
+                                          : 'text-red-600'
+                                      }`}>
+                                        {Math.round(((a.totalSessions - a.missedCount) / a.totalSessions) * 100)}%
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid md:grid-cols-3 gap-6">
           {/* Today's Sessions */}
@@ -331,14 +584,15 @@ export default function TrainerDashboard() {
 
           {/* Athletes */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">My Athletes</h2>
+            <h2 className="text-lg font-semibold mb-4">My Athletes ({athletes.length})</h2>
             {athletes.length === 0 ? (
-              <p className="text-gray-500">No athletes yet</p>
+              <p className="text-gray-500">No athletes yet. Try: &quot;Add athlete John Doe&quot;</p>
             ) : (
               <ul className="space-y-2">
                 {athletes.map((athlete) => (
-                  <li key={athlete.id} className="text-sm">
-                    {athlete.firstName} {athlete.lastName}
+                  <li key={athlete.id} className="text-sm p-2 bg-gray-50 rounded">
+                    <span className="font-medium">{athlete.firstName} {athlete.lastName}</span>
+                    <span className="text-gray-400 text-xs block">{athlete.email}</span>
                   </li>
                 ))}
               </ul>

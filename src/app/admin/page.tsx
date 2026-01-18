@@ -64,6 +64,13 @@ interface QueryResult {
   timestamp: Date
 }
 
+interface WalkIn {
+  id: string
+  name: string
+  email: string | null
+  checkInTime: string
+}
+
 export default function AdminDashboard() {
   const [trainers, setTrainers] = useState<TrainerData[]>([])
   const [input, setInput] = useState('')
@@ -75,11 +82,14 @@ export default function AdminDashboard() {
   const [lastAction, setLastAction] = useState<ActionHistory | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [walkIns, setWalkIns] = useState<WalkIn[]>([])
+  const [assigningWalkIn, setAssigningWalkIn] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
     fetchUser()
     fetchTrainers()
+    fetchWalkIns()
   }, [])
 
   // Auto-refresh every 10 seconds when enabled
@@ -87,6 +97,7 @@ export default function AdminDashboard() {
     if (!autoRefresh) return
     const interval = setInterval(() => {
       fetchTrainers()
+      fetchWalkIns()
     }, 10000)
     return () => clearInterval(interval)
   }, [autoRefresh])
@@ -105,6 +116,38 @@ export default function AdminDashboard() {
     if (data.success) {
       setTrainers(data.data)
       setLastRefresh(new Date())
+    }
+  }
+
+  async function fetchWalkIns() {
+    const res = await fetch('/api/walkins')
+    const data = await res.json()
+    if (data.success) {
+      setWalkIns(data.data)
+    }
+  }
+
+  async function assignWalkIn(walkInId: string, trainerId: string) {
+    setAssigningWalkIn(walkInId)
+    try {
+      const res = await fetch(`/api/walkins/${walkInId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainerId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setResult({ success: true, message: data.message })
+        fetchWalkIns()
+        fetchTrainers()
+      } else {
+        setResult({ success: false, message: data.error || 'Failed to assign' })
+      }
+    } catch (error) {
+      console.error('Error assigning walk-in:', error)
+      setResult({ success: false, message: 'Failed to assign walk-in' })
+    } finally {
+      setAssigningWalkIn(null)
     }
   }
 
@@ -635,7 +678,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-6 text-center">
             <div className="text-3xl font-bold">{trainers.length}</div>
             <div className="text-gray-500">Trainers</div>
@@ -648,7 +691,63 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-green-600">{completedToday}</div>
             <div className="text-gray-500">Completed</div>
           </div>
+          <div className="bg-white rounded-lg shadow p-6 text-center">
+            <div className={`text-3xl font-bold ${walkIns.length > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+              {walkIns.length}
+            </div>
+            <div className="text-gray-500">Walk-ins</div>
+          </div>
         </div>
+
+        {/* Walk-ins Section */}
+        {walkIns.length > 0 && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg shadow p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <span className="text-orange-500">●</span>
+              Unassigned Walk-ins ({walkIns.length})
+            </h2>
+            <div className="space-y-3">
+              {walkIns.map((walkIn) => (
+                <div
+                  key={walkIn.id}
+                  className="bg-white rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div>
+                    <div className="font-medium">{walkIn.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {walkIn.email || 'No email'} • Checked in{' '}
+                      {new Date(walkIn.checkInTime).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="border rounded px-3 py-2 text-sm"
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          assignWalkIn(walkIn.id, e.target.value)
+                        }
+                      }}
+                      disabled={assigningWalkIn === walkIn.id}
+                    >
+                      <option value="" disabled>
+                        {assigningWalkIn === walkIn.id ? 'Assigning...' : 'Assign to trainer...'}
+                      </option>
+                      {trainers.map((trainer) => (
+                        <option key={trainer.id} value={trainer.id}>
+                          {trainer.user.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Trainer Grid */}
         <h2 className="text-lg font-semibold mb-4">All Trainers</h2>

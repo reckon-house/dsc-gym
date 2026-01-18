@@ -2,23 +2,28 @@
 
 import { useState, useEffect } from 'react'
 
-type CheckinState = 'input' | 'loading' | 'success' | 'no-session' | 'error'
+type CheckinState = 'input' | 'loading' | 'success' | 'no-session' | 'walk-in' | 'error'
 
 interface CheckinData {
-  athlete: {
+  athlete?: {
     firstName: string
     lastName: string
   }
-  trainer: {
+  trainer?: {
     name: string
   }
-  session: {
+  session?: {
     scheduledAt: string
     duration: number
   } | null
-  nextSession: {
+  nextSession?: {
     scheduledAt: string
   } | null
+  walkIn?: {
+    id: string
+    name: string
+    time: string
+  }
   message: string
 }
 
@@ -30,7 +35,7 @@ export default function CheckinPage() {
 
   // Auto-reset after success/error
   useEffect(() => {
-    if (state === 'success' || state === 'no-session') {
+    if (state === 'success' || state === 'no-session' || state === 'walk-in') {
       const timer = setTimeout(() => {
         setState('input')
         setEmail('')
@@ -62,7 +67,14 @@ export default function CheckinPage() {
         return
       }
 
-      setData(result.data)
+      // Handle walk-in response
+      if (result.isWalkIn) {
+        setData({ walkIn: result.data.walkIn, message: result.message })
+        setState('walk-in')
+        return
+      }
+
+      setData({ ...result.data, message: result.message })
       setState(result.data.matched ? 'success' : 'no-session')
     } catch {
       setError('An error occurred')
@@ -157,6 +169,29 @@ export default function CheckinPage() {
                 </p>
               )}
             </div>
+            <button
+              onClick={handleReset}
+              className="text-white underline text-sm"
+            >
+              Check in another person
+            </button>
+          </div>
+        )}
+
+        {/* Walk-in State */}
+        {state === 'walk-in' && data && (
+          <div className="text-center text-white space-y-6">
+            <div className="text-6xl mb-4">&#128075;</div>
+            <h2 className="text-3xl font-bold">
+              Welcome, {data.walkIn?.name}!
+            </h2>
+            <div className="bg-blue-500/20 rounded-lg p-6">
+              <p className="text-xl">You&apos;ve been checked in as a walk-in</p>
+              <p className="text-gray-300 mt-2">
+                Please speak with a trainer to get set up with an account
+              </p>
+            </div>
+            <p className="text-gray-400">Resetting in 5 seconds...</p>
             <button
               onClick={handleReset}
               className="text-white underline text-sm"

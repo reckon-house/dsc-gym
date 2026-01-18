@@ -72,3 +72,14 @@ model CheckIn {
   athlete Athlete  @relation(fields: [athleteId], references: [id])
   session Session? @relation(fields: [sessionId], references: [id])
 }
+
+model WalkIn {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  checkInTime DateTime @default(now())
+  claimed     Boolean  @default(false)
+  claimedBy   String?  // trainerId if assigned
+  claimedAt   DateTime?
+  convertedToAthleteId String? // athleteId if converted to real athlete
+}

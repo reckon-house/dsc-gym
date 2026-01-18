@@ -21,6 +21,7 @@ export type ParsedAction =
   | 'UPDATE_SESSION'
   | 'CANCEL_SESSION'
   | 'CREATE_ATHLETE'
+  | 'DELETE_ATHLETE'
   | 'QUERY'
   | 'UNKNOWN'
 
@@ -47,6 +48,8 @@ export type QueryType =
   | 'ATHLETES_LIST'      // List athletes
   | 'ATHLETES_COUNT'     // Count athletes
   | 'SCHEDULE_SUMMARY'   // Schedule overview
+  | 'CHECKINS_LIST'      // List check-ins for a date range
+  | 'ATTENDANCE_REPORT'  // Who checked in vs who had sessions (attendance tracking)
 
 export interface ParsedQuery {
   queryType: QueryType
