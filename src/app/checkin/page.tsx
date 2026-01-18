@@ -125,12 +125,12 @@ export default function CheckinPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ENTER EMAIL"
-                className="w-full px-5 py-3 text-base font-bold tracking-wider text-center bg-white rounded-[25px] focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 placeholder:font-bold"
+                className="w-full px-5 py-4 text-base font-bold tracking-wider text-center bg-white rounded-[25px] focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 placeholder:font-bold"
                 autoFocus
               />
               <button
                 type="submit"
-                className="w-full px-5 py-3 text-base font-black tracking-wider bg-black text-white rounded-[25px] hover:bg-gray-900 transition-colors"
+                className="w-full px-5 py-4 text-base font-black tracking-wider bg-black text-white rounded-[25px] hover:bg-gray-900 transition-colors"
               >
                 SUBMIT
               </button>
