@@ -117,7 +117,7 @@ export default function AdminDashboard() {
 
   async function fetchSessions() {
     const { start, end } = getDateRange()
-    const res = await fetch(`/api/sessions?start=${start.toISOString()}&end=${end.toISOString()}`)
+    const res = await fetch(`/api/sessions?startDate=${start.toISOString()}&endDate=${end.toISOString()}`)
     const data = await res.json()
     if (data.success) {
       setSessions(data.data)
@@ -191,10 +191,28 @@ export default function AdminDashboard() {
         const message = data.execution?.message || data.parsed?.humanReadableSummary || 'Done!'
         setResult({ success: true, message })
         setInput('')
+
         // Refresh data
         fetchTrainers()
-        fetchSessions()
         fetchWalkIns()
+
+        // Check if a session was created and adjust calendar view
+        // The results array contains created/updated records
+        const results = data.execution?.results
+        if (results && results.length > 0) {
+          // Look for any session in results that has scheduledAt
+          const sessionResult = results.find((r: { scheduledAt?: string }) => r?.scheduledAt)
+          if (sessionResult?.scheduledAt) {
+            const newDate = new Date(sessionResult.scheduledAt)
+            // Update current date to show the new session
+            setCurrentDate(newDate)
+            // Open calendar accordion to show the result
+            setCalendarOpen(true)
+          }
+        }
+
+        // Always refresh sessions after any command
+        fetchSessions()
       } else {
         setResult({
           success: false,
