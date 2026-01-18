@@ -14,7 +14,6 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/checkin',
   '/api/athletes/register',
-  '/api/debug',
 ]
 
 // Routes only accessible by specific roles
