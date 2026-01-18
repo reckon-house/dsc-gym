@@ -36,6 +36,17 @@ export async function GET() {
             name: true,
           },
         },
+        athletes: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+          orderBy: {
+            lastName: 'asc',
+          },
+        },
         _count: {
           select: {
             athletes: true,
@@ -75,6 +86,7 @@ export async function GET() {
       return {
         id: trainer.id,
         user: trainer.user,
+        athletes: trainer.athletes,
         totalAthletes: trainer._count.athletes,
         totalSessions: trainer._count.sessions,
         todaySessions: todaySessions,
