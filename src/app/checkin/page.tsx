@@ -116,10 +116,10 @@ export default function CheckinPage() {
         </div>
 
         {/* Overlay Content */}
-        <div className="relative z-10 flex flex-col items-center justify-end h-full px-4 pb-24">
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-end px-4 pb-8">
           {/* Input State */}
           {state === 'input' && (
-            <form onSubmit={handleCheckin} className="w-full max-w-sm space-y-3 mb-6">
+            <form onSubmit={handleCheckin} className="w-full max-w-sm space-y-3 mb-5">
               <input
                 type="email"
                 value={email}
@@ -235,7 +235,7 @@ export default function CheckinPage() {
         </div>
 
         {/* Bottom Tagline */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/60 py-5">
+        <div className="absolute bottom-0 left-0 right-0 py-5 z-10">
           <p className="text-white text-center text-xl font-semibold tracking-[0.3em] uppercase">
             Unlock Your Peak Performance
           </p>
