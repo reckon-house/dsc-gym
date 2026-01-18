@@ -384,13 +384,27 @@ async function deleteAthlete(
 
     // If no ID provided, try to find by name
     if (!athleteId) {
-      const athlete = await db.athlete.findFirst({
+      // SQLite doesn't support case-insensitive mode, so we search with exact match first
+      // then fall back to fetching all and comparing case-insensitively
+      let athlete = await db.athlete.findFirst({
         where: {
           trainerId,
-          firstName: { equals: athleteData.firstName, mode: 'insensitive' },
-          lastName: { equals: athleteData.lastName, mode: 'insensitive' },
+          firstName: athleteData.firstName,
+          lastName: athleteData.lastName,
         },
       })
+
+      // If not found, try case-insensitive search
+      if (!athlete) {
+        const athletes = await db.athlete.findMany({
+          where: { trainerId },
+        })
+        athlete = athletes.find(
+          (a) =>
+            a.firstName.toLowerCase() === athleteData.firstName.toLowerCase() &&
+            a.lastName.toLowerCase() === athleteData.lastName.toLowerCase()
+        ) || null
+      }
 
       if (!athlete) {
         return {

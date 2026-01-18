@@ -126,7 +126,7 @@ export default function CheckinPage() {
         )}
 
         {/* Success State */}
-        {state === 'success' && data && (
+        {state === 'success' && data && data.athlete && data.trainer && (
           <div className="text-center text-white space-y-6">
             <div className="text-6xl mb-4">&#10003;</div>
             <h2 className="text-3xl font-bold">
@@ -155,7 +155,7 @@ export default function CheckinPage() {
         )}
 
         {/* No Session State */}
-        {state === 'no-session' && data && (
+        {state === 'no-session' && data && data.athlete && (
           <div className="text-center text-white space-y-6">
             <h2 className="text-3xl font-bold">
               Welcome, {data.athlete.firstName}!
