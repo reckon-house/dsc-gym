@@ -84,3 +84,14 @@ model WalkIn {
   claimedAt   DateTime?
   convertedToAthleteId String? // athleteId if converted to real athlete
 }
+
+model WaiverSignature {
+  id            String   @id @default(cuid())
+  email         String
+  legalName     String
+  signedAt      DateTime @default(now())
+  ipAddress     String?
+  athleteId     String?
+
+  @@index([email])
+}
