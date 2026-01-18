@@ -116,7 +116,7 @@ export default function CheckinPage() {
         </div>
 
         {/* Overlay Content */}
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-end px-4 pb-8">
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-end px-4 pb-[108px]">
           {/* Input State */}
           {state === 'input' && (
             <form onSubmit={handleCheckin} className="w-full max-w-sm space-y-3 mb-5">
