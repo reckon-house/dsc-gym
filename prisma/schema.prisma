@@ -28,16 +28,17 @@ model Trainer {
 }
 
 model Athlete {
-  id        String    @id @default(cuid())
-  firstName String
-  lastName  String
-  email     String    @unique
-  address   String?
-  trainerId String?
-  trainer   Trainer?  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  sessions  Session[]
-  checkIns  CheckIn[]
-  createdAt DateTime  @default(now())
+  id           String    @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String    @unique
+  passwordHash String?
+  address      String?
+  trainerId    String?
+  trainer      Trainer?  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  sessions     Session[]
+  checkIns     CheckIn[]
+  createdAt    DateTime  @default(now())
 }
 
 model Session {
