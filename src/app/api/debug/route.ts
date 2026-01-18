@@ -25,6 +25,7 @@ export async function GET() {
 
   return NextResponse.json({
     turso_url_starts: tursoUrl.substring(0, 30),
+    turso_url_full: tursoUrl,
     turso_url_length: tursoUrl.length,
     turso_url_protocol: tursoUrl.split('://')[0],
     turso_token: tursoToken,
