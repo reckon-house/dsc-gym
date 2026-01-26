@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 
-type View = 'landing' | 'register' | 'login'
+type Tab = 'signin' | 'register'
 type CheckinState = 'input' | 'loading' | 'waiver' | 'success' | 'no-session' | 'walk-in' | 'error'
 type RegisterState = 'input' | 'loading' | 'success' | 'error'
 
@@ -50,11 +50,11 @@ Dallas Sports Collective, LLC, any staff member or agent does not provide medica
 I have read and fully understand the terms of this Agreement and understand that I am giving up legal rights by signing this Agreement. I acknowledge that I am signing this agreement freely and voluntarily without any inducement, assurance, or guarantee being made to me and intend my signature to be complete and unconditional release of all liability to the greatest extent allowed by law.`
 
 export default function CheckinPage() {
-  // View state
-  const [view, setView] = useState<View>('landing')
+  // Tab state
+  const [activeTab, setActiveTab] = useState<Tab>('signin')
 
   // Sign-in state
-  const [loginInput, setLoginInput] = useState('')
+  const [email, setEmail] = useState('')
   const [state, setState] = useState<CheckinState>('input')
   const [data, setData] = useState<CheckinData | null>(null)
   const [error, setError] = useState('')
@@ -63,33 +63,31 @@ export default function CheckinPage() {
   const [waiverLoading, setWaiverLoading] = useState(false)
   const waiverScrollRef = useRef<HTMLDivElement>(null)
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [loginWaiverComplete, setLoginWaiverComplete] = useState(false)
 
   // Register state
   const [registerState, setRegisterState] = useState<RegisterState>('input')
   const [registerError, setRegisterError] = useState('')
-  const [registerInput, setRegisterInput] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [registerLegalName, setRegisterLegalName] = useState('')
   const [registerWaiverAgreed, setRegisterWaiverAgreed] = useState(false)
   const registerWaiverScrollRef = useRef<HTMLDivElement>(null)
   const [registerHasScrolledToBottom, setRegisterHasScrolledToBottom] = useState(false)
-  const [showRegisterWaiver, setShowRegisterWaiver] = useState(false)
-  const [registerWaiverComplete, setRegisterWaiverComplete] = useState(false)
-  const [parsedRegisterData, setParsedRegisterData] = useState<{firstName: string, lastName: string, email: string, phone?: string} | null>(null)
+  const [showWaiver, setShowWaiver] = useState(false)
 
   // Auto-reset after success/error for sign-in
   useEffect(() => {
     if (state === 'success' || state === 'no-session' || state === 'walk-in') {
       const timer = setTimeout(() => {
         setState('input')
-        setLoginInput('')
+        setEmail('')
         setData(null)
         setLegalName('')
         setWaiverAgreed(false)
         setHasScrolledToBottom(false)
-        setLoginWaiverComplete(false)
-        setView('landing')
       }, 5000)
       return () => clearTimeout(timer)
     }
@@ -100,14 +98,17 @@ export default function CheckinPage() {
     if (registerState === 'success') {
       const timer = setTimeout(() => {
         setRegisterState('input')
-        setRegisterInput('')
+        setFirstName('')
+        setLastName('')
+        setRegisterEmail('')
+        setPassword('')
+        setConfirmPassword('')
         setRegisterLegalName('')
         setRegisterWaiverAgreed(false)
         setRegisterHasScrolledToBottom(false)
-        setShowRegisterWaiver(false)
-        setRegisterWaiverComplete(false)
-        setParsedRegisterData(null)
-        setView('landing')
+        setShowWaiver(false)
+        // Switch to sign-in tab after successful registration
+        setActiveTab('signin')
       }, 5000)
       return () => clearTimeout(timer)
     }
@@ -132,53 +133,10 @@ export default function CheckinPage() {
     }
   }
 
-  // Parse input for registration (name, email, phone)
-  function parseRegisterInput(input: string): { firstName: string, lastName: string, email: string, phone?: string } | null {
-    const trimmed = input.trim()
-
-    // Try to extract email
-    const emailMatch = trimmed.match(/[\w.-]+@[\w.-]+\.\w+/)
-    const email = emailMatch ? emailMatch[0] : ''
-
-    // Try to extract phone (various formats)
-    const phoneMatch = trimmed.match(/(\+?1?[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/)
-    const phone = phoneMatch ? phoneMatch[0].replace(/[^\d]/g, '') : undefined
-
-    // Remove email and phone from string to get name
-    let nameStr = trimmed
-      .replace(emailMatch?.[0] || '', '')
-      .replace(phoneMatch?.[0] || '', '')
-      .replace(/,/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    // Parse name
-    const nameParts = nameStr.split(' ').filter(p => p.length > 0)
-    if (nameParts.length < 2 || !email) {
-      return null
-    }
-
-    const firstName = nameParts[0]
-    const lastName = nameParts.slice(1).join(' ')
-
-    return { firstName, lastName, email, phone }
-  }
-
   // Sign-in handlers
-  async function handleLoginSubmit(e: React.FormEvent) {
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!loginInput.trim()) return
-
-    // Extract email from input
-    const emailMatch = loginInput.trim().match(/[\w.-]+@[\w.-]+\.\w+/)
-    if (!emailMatch) {
-      setError('Please include a valid email address')
-      setState('error')
-      return
-    }
-
-    const email = emailMatch[0]
-    setLoginEmail(email)
+    if (!email.trim()) return
 
     setState('loading')
     setError('')
@@ -188,15 +146,14 @@ export default function CheckinPage() {
       const waiverRes = await fetch('/api/waiver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, action: 'check' }),
+        body: JSON.stringify({ email: email.trim(), action: 'check' }),
       })
 
       const waiverResult = await waiverRes.json()
 
       if (waiverResult.success && waiverResult.signed) {
         // Waiver already signed, proceed with check-in
-        setLoginWaiverComplete(true)
-        await performCheckin(email)
+        await performCheckin()
       } else {
         // Show waiver modal
         setState('waiver')
@@ -217,7 +174,7 @@ export default function CheckinPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: loginEmail,
+          email: email.trim(),
           legalName: legalName.trim(),
           action: 'sign',
         }),
@@ -231,9 +188,8 @@ export default function CheckinPage() {
         return
       }
 
-      setLoginWaiverComplete(true)
       // Proceed with check-in
-      await performCheckin(loginEmail)
+      await performCheckin()
     } catch {
       setError('An error occurred')
       setState('error')
@@ -242,14 +198,14 @@ export default function CheckinPage() {
     }
   }
 
-  async function performCheckin(email: string) {
+  async function performCheckin() {
     setState('loading')
 
     try {
       const res = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       })
 
       const result = await res.json()
@@ -275,35 +231,39 @@ export default function CheckinPage() {
     }
   }
 
-  function handleLoginReset() {
+  function handleReset() {
     setState('input')
-    setLoginInput('')
+    setEmail('')
     setData(null)
     setError('')
     setLegalName('')
     setWaiverAgreed(false)
     setHasScrolledToBottom(false)
-    setLoginWaiverComplete(false)
   }
 
   // Register handlers
-  async function handleRegisterContinue(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
 
-    const parsed = parseRegisterInput(registerInput)
-    if (!parsed) {
-      setRegisterError('Please enter your full name, email address, and phone number')
+    // Validate
+    if (!firstName.trim() || !lastName.trim()) {
+      setRegisterError('First and last name are required')
       return
     }
-
-    setParsedRegisterData(parsed)
-    setRegisterError('')
-    setShowRegisterWaiver(true)
-  }
-
-  async function handleRegisterComplete() {
-    if (!registerWaiverAgreed || !registerLegalName.trim() || !parsedRegisterData) {
-      setRegisterError('Please complete the waiver')
+    if (!registerEmail.trim()) {
+      setRegisterError('Email is required')
+      return
+    }
+    if (!password || password.length < 6) {
+      setRegisterError('Password must be at least 6 characters')
+      return
+    }
+    if (password !== confirmPassword) {
+      setRegisterError('Passwords do not match')
+      return
+    }
+    if (!registerWaiverAgreed || !registerLegalName.trim()) {
+      setRegisterError('You must agree to the waiver and enter your legal name')
       return
     }
 
@@ -315,11 +275,10 @@ export default function CheckinPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: parsedRegisterData.firstName,
-          lastName: parsedRegisterData.lastName,
-          email: parsedRegisterData.email,
-          phone: parsedRegisterData.phone,
-          password: 'athlete123', // Default password for now
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: registerEmail.trim(),
+          password,
           legalName: registerLegalName.trim(),
         }),
       })
@@ -332,7 +291,6 @@ export default function CheckinPage() {
         return
       }
 
-      setRegisterWaiverComplete(true)
       setRegisterState('success')
     } catch {
       setRegisterError('An error occurred')
@@ -343,327 +301,291 @@ export default function CheckinPage() {
   function handleRegisterReset() {
     setRegisterState('input')
     setRegisterError('')
-    setShowRegisterWaiver(false)
-    setRegisterWaiverComplete(false)
-    setParsedRegisterData(null)
+    setShowWaiver(false)
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative">
-      {/* Full-screen Background Image */}
-      <div className="absolute inset-0">
-        <Image
-          src="/checkin-bg.jpg"
-          alt="Gym"
-          fill
-          className="object-cover grayscale"
-          priority
-        />
-      </div>
-
-      {/* DSC Logo - Top Left */}
-      <div className="absolute top-6 left-6 z-20">
+    <div className="min-h-screen flex flex-col">
+      {/* Header with Logo */}
+      <header className="bg-white py-6 px-4 flex flex-col items-center">
         <Image
           src="/dsc-logo.svg"
-          alt="DSC"
-          width={60}
-          height={60}
-          className="invert"
+          alt="Dallas Sports Collective"
+          width={80}
+          height={80}
         />
-      </div>
+        <h1 className="mt-2 text-xl font-bold tracking-[0.2em] text-gray-800">
+          DALLAS SPORTS COLLECTIVE
+        </h1>
+      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 relative z-10 flex flex-col justify-center px-8 py-20">
+      {/* Main Content with Background Image */}
+      <main className="flex-1 relative">
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/checkin-bg.jpg"
+            alt="Gym"
+            fill
+            className="object-cover grayscale"
+            priority
+          />
+        </div>
 
-        {/* LANDING VIEW */}
-        {view === 'landing' && (
-          <div className="max-w-xl">
-            <button
-              onClick={() => setView('register')}
-              className="group flex items-center gap-4 mb-6"
-            >
-              <h1 className="text-white text-5xl md:text-6xl font-black italic tracking-tight drop-shadow-lg">
-                NEW ATHLETE<br />REGISTRATION
-              </h1>
-              <span className="text-white text-4xl font-light group-hover:translate-x-2 transition-transform">&lt;</span>
-            </button>
+        {/* Overlay Content */}
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-4">
+          {/* Tab Buttons */}
+          {(state === 'input' || registerState === 'input') && !showWaiver && (
+            <div className="flex mb-6 bg-white/30 backdrop-blur rounded-full p-1 shadow-lg">
+              <button
+                onClick={() => setActiveTab('signin')}
+                className={`px-8 py-3 rounded-full text-sm font-bold tracking-wider transition-all ${
+                  activeTab === 'signin'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-white hover:bg-white/20'
+                }`}
+              >
+                SIGN IN
+              </button>
+              <button
+                onClick={() => setActiveTab('register')}
+                className={`px-8 py-3 rounded-full text-sm font-bold tracking-wider transition-all ${
+                  activeTab === 'register'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-white hover:bg-white/20'
+                }`}
+              >
+                REGISTER
+              </button>
+            </div>
+          )}
 
-            <button
-              onClick={() => setView('login')}
-              className="group flex items-center gap-4"
-            >
-              <h2 className="text-white text-5xl md:text-6xl font-black italic tracking-tight drop-shadow-lg">
-                ATHLETE LOGIN
-              </h2>
-              <span className="text-white text-4xl font-light group-hover:translate-x-2 transition-transform">&lt;</span>
-            </button>
-          </div>
-        )}
-
-        {/* REGISTER VIEW */}
-        {view === 'register' && registerState === 'input' && !showRegisterWaiver && (
-          <div className="max-w-2xl">
-            <button
-              onClick={() => setView('landing')}
-              className="group flex items-center gap-3 mb-8"
-            >
-              <h1 className="text-white text-4xl md:text-5xl font-black italic tracking-tight drop-shadow-lg">
-                JOIN THE DALLAS<br />SPORT COLLECTIVE
-              </h1>
-              <span className="text-white text-3xl font-light rotate-180 group-hover:-translate-x-2 transition-transform">&lt;</span>
-            </button>
-
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
-              <p className="font-bold text-sm md:text-base mb-4 text-black">
-                WELCOME! THIS IS THE DALLAS SPORT COLLECTIVE AI POWERED GYM APP. LET&apos;S GET A LITTLE INFO FROM YOU BEFORE YOU JOIN.
-              </p>
-
-              <form onSubmit={handleRegisterContinue} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-2">
-                    Type you full name, email address and phone number:
-                  </label>
+          {/* SIGN IN TAB */}
+          {activeTab === 'signin' && (
+            <>
+              {/* Input State */}
+              {state === 'input' && (
+                <form onSubmit={handleEmailSubmit} className="w-full max-w-md space-y-4">
                   <input
-                    type="text"
-                    value={registerInput}
-                    onChange={(e) => setRegisterInput(e.target.value)}
-                    placeholder="Justin Jefferson, jjefferson@gmail.com, 214-697-4578"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black text-gray-700"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ENTER EMAIL"
+                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
                     autoFocus
                   />
-                </div>
-
-                {registerError && (
-                  <p className="text-red-500 text-sm">{registerError}</p>
-                )}
-
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={registerWaiverComplete}
-                      readOnly
-                      className="w-4 h-4 accent-black"
-                    />
-                    Complete waiver
-                  </label>
                   <button
                     type="submit"
-                    className="px-6 py-2 bg-white border-2 border-black text-black font-bold rounded-lg hover:bg-gray-100 transition-colors"
+                    className="w-full px-6 py-4 text-base font-black tracking-wider bg-black text-white rounded-full hover:bg-gray-900 transition-colors shadow-lg"
                   >
-                    Enter / Register
+                    SIGN IN
+                  </button>
+                </form>
+              )}
+
+              {/* Loading State */}
+              {state === 'loading' && (
+                <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
+                  <div className="text-white text-xl mb-4">Finding your session...</div>
+                  <div className="animate-pulse text-white text-4xl">...</div>
+                </div>
+              )}
+
+              {/* Success State */}
+              {state === 'success' && data && data.athlete && data.trainer && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <div className="text-6xl text-green-400">&#10003;</div>
+                  <h2 className="text-3xl font-black text-white">
+                    Welcome, {data.athlete.firstName}!
+                  </h2>
+                  <div className="bg-white/10 rounded-lg p-4 space-y-2">
+                    <p className="text-xl text-white">Trainer: {data.trainer.name}</p>
+                    {data.session && (
+                      <p className="text-lg text-gray-300">
+                        Session at{' '}
+                        {new Date(data.session.scheduledAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleReset}
+                    className="text-white/70 underline text-sm hover:text-white"
+                  >
+                    Check in another person
                   </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        )}
+              )}
 
-        {/* Register Loading */}
-        {registerState === 'loading' && (
-          <div className="max-w-md mx-auto text-center bg-black/70 backdrop-blur rounded-2xl p-8">
-            <div className="text-white text-xl mb-4">Creating your account...</div>
-            <div className="animate-pulse text-white text-4xl">...</div>
-          </div>
-        )}
+              {/* No Session State */}
+              {state === 'no-session' && data && data.athlete && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <h2 className="text-3xl font-black text-white">
+                    Welcome, {data.athlete.firstName}!
+                  </h2>
+                  <div className="bg-yellow-500/20 rounded-lg p-4">
+                    <p className="text-xl text-white">No session scheduled for today</p>
+                    {data.nextSession && (
+                      <p className="text-gray-300 mt-2">
+                        Next session:{' '}
+                        {new Date(data.nextSession.scheduledAt).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleReset}
+                    className="text-white/70 underline text-sm hover:text-white"
+                  >
+                    Check in another person
+                  </button>
+                </div>
+              )}
 
-        {/* Register Success */}
-        {registerState === 'success' && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <div className="text-6xl text-green-400">&#10003;</div>
-            <h2 className="text-3xl font-black text-white">
-              Welcome, {parsedRegisterData?.firstName}!
-            </h2>
-            <div className="bg-green-500/20 rounded-lg p-4">
-              <p className="text-xl text-white">Registration complete!</p>
-              <p className="text-gray-300 mt-2">
-                You can now sign in with your email
-              </p>
-            </div>
-          </div>
-        )}
+              {/* Walk-in State */}
+              {state === 'walk-in' && data && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <div className="text-6xl">&#128075;</div>
+                  <h2 className="text-3xl font-black text-white">
+                    Welcome, {data.walkIn?.name}!
+                  </h2>
+                  <div className="bg-blue-500/20 rounded-lg p-4">
+                    <p className="text-xl text-white">You&apos;ve been checked in as a walk-in</p>
+                    <p className="text-gray-300 mt-2">
+                      Please speak with a trainer to get set up with an account
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleReset}
+                    className="text-white/70 underline text-sm hover:text-white"
+                  >
+                    Check in another person
+                  </button>
+                </div>
+              )}
 
-        {/* Register Error */}
-        {registerState === 'error' && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <div className="text-6xl text-red-500">!</div>
-            <p className="text-xl text-red-400">{registerError}</p>
-            <button
-              onClick={handleRegisterReset}
-              className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
+              {/* Error State */}
+              {state === 'error' && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <div className="text-6xl text-red-500">!</div>
+                  <p className="text-xl text-red-400">{error}</p>
+                  <button
+                    onClick={handleReset}
+                    className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+            </>
+          )}
 
-        {/* LOGIN VIEW */}
-        {view === 'login' && state === 'input' && (
-          <div className="max-w-2xl">
-            <button
-              onClick={() => setView('landing')}
-              className="group flex items-center gap-3 mb-8"
-            >
-              <h1 className="text-white text-4xl md:text-5xl font-black italic tracking-tight drop-shadow-lg">
-                ATHLETE LOGIN
-              </h1>
-              <span className="text-white text-3xl font-light rotate-180 group-hover:-translate-x-2 transition-transform">&lt;</span>
-            </button>
-
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
-              <p className="font-bold text-sm md:text-base mb-4 text-black">
-                SIGN IN BEFORE YOU SESSION BEGINS
-              </p>
-
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-2">
-                    Type you full name, email address and phone number:
-                  </label>
+          {/* REGISTER TAB */}
+          {activeTab === 'register' && (
+            <>
+              {/* Input State */}
+              {registerState === 'input' && !showWaiver && (
+                <form onSubmit={(e) => { e.preventDefault(); setRegisterError(''); setShowWaiver(true); }} className="w-full max-w-md space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="FIRST NAME"
+                      className="flex-1 px-4 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
+                    />
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="LAST NAME"
+                      className="flex-1 px-4 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
+                    />
+                  </div>
                   <input
-                    type="text"
-                    value={loginInput}
-                    onChange={(e) => setLoginInput(e.target.value)}
-                    placeholder="Justin Jefferson, jjefferson@gmail.com, 214-697-4578"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black text-gray-700"
-                    autoFocus
+                    type="email"
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    placeholder="EMAIL"
+                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
                   />
-                </div>
-
-                {error && state === 'input' && (
-                  <p className="text-red-500 text-sm">{error}</p>
-                )}
-
-                <div className="flex items-center justify-between pt-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={loginWaiverComplete}
-                      readOnly
-                      className="w-4 h-4 accent-black"
-                    />
-                    Complete waiver
-                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="PASSWORD"
+                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="CONFIRM PASSWORD"
+                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
+                  />
+                  {registerError && (
+                    <p className="text-red-400 text-center text-sm bg-black/50 rounded-lg py-2">{registerError}</p>
+                  )}
                   <button
                     type="submit"
-                    className="px-6 py-2 bg-white border-2 border-black text-black font-bold rounded-lg hover:bg-gray-100 transition-colors"
+                    className="w-full px-6 py-4 text-base font-black tracking-wider bg-black text-white rounded-full hover:bg-gray-900 transition-colors shadow-lg"
                   >
-                    Enter / Submit
+                    CONTINUE TO WAIVER
+                  </button>
+                </form>
+              )}
+
+              {/* Loading State */}
+              {registerState === 'loading' && (
+                <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
+                  <div className="text-white text-xl mb-4">Creating your account...</div>
+                  <div className="animate-pulse text-white text-4xl">...</div>
+                </div>
+              )}
+
+              {/* Success State */}
+              {registerState === 'success' && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <div className="text-6xl text-green-400">&#10003;</div>
+                  <h2 className="text-3xl font-black text-white">
+                    Welcome, {firstName}!
+                  </h2>
+                  <div className="bg-green-500/20 rounded-lg p-4">
+                    <p className="text-xl text-white">Registration complete!</p>
+                    <p className="text-gray-300 mt-2">
+                      You can now sign in with your email
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {registerState === 'error' && (
+                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+                  <div className="text-6xl text-red-500">!</div>
+                  <p className="text-xl text-red-400">{registerError}</p>
+                  <button
+                    onClick={handleRegisterReset}
+                    className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
+                  >
+                    Try Again
                   </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Login Loading */}
-        {view === 'login' && state === 'loading' && (
-          <div className="max-w-md mx-auto text-center bg-black/70 backdrop-blur rounded-2xl p-8">
-            <div className="text-white text-xl mb-4">Finding your session...</div>
-            <div className="animate-pulse text-white text-4xl">...</div>
-          </div>
-        )}
-
-        {/* Login Success */}
-        {view === 'login' && state === 'success' && data && data.athlete && data.trainer && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <div className="text-6xl text-green-400">&#10003;</div>
-            <h2 className="text-3xl font-black text-white">
-              Welcome, {data.athlete.firstName}!
-            </h2>
-            <div className="bg-white/10 rounded-lg p-4 space-y-2">
-              <p className="text-xl text-white">Trainer: {data.trainer.name}</p>
-              {data.session && (
-                <p className="text-lg text-gray-300">
-                  Session at{' '}
-                  {new Date(data.session.scheduledAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </p>
               )}
-            </div>
-            <button
-              onClick={handleLoginReset}
-              className="text-white/70 underline text-sm hover:text-white"
-            >
-              Check in another person
-            </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
 
-        {/* Login No Session */}
-        {view === 'login' && state === 'no-session' && data && data.athlete && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <h2 className="text-3xl font-black text-white">
-              Welcome, {data.athlete.firstName}!
-            </h2>
-            <div className="bg-yellow-500/20 rounded-lg p-4">
-              <p className="text-xl text-white">No session scheduled for today</p>
-              {data.nextSession && (
-                <p className="text-gray-300 mt-2">
-                  Next session:{' '}
-                  {new Date(data.nextSession.scheduledAt).toLocaleDateString()}
-                </p>
-              )}
-            </div>
-            <button
-              onClick={handleLoginReset}
-              className="text-white/70 underline text-sm hover:text-white"
-            >
-              Check in another person
-            </button>
-          </div>
-        )}
-
-        {/* Login Walk-in */}
-        {view === 'login' && state === 'walk-in' && data && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <div className="text-6xl">&#128075;</div>
-            <h2 className="text-3xl font-black text-white">
-              Welcome, {data.walkIn?.name}!
-            </h2>
-            <div className="bg-blue-500/20 rounded-lg p-4">
-              <p className="text-xl text-white">You&apos;ve been checked in as a walk-in</p>
-              <p className="text-gray-300 mt-2">
-                Please speak with a trainer to get set up with an account
-              </p>
-            </div>
-            <button
-              onClick={handleLoginReset}
-              className="text-white/70 underline text-sm hover:text-white"
-            >
-              Check in another person
-            </button>
-          </div>
-        )}
-
-        {/* Login Error */}
-        {view === 'login' && state === 'error' && (
-          <div className="max-w-md mx-auto text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4">
-            <div className="text-6xl text-red-500">!</div>
-            <p className="text-xl text-red-400">{error}</p>
-            <button
-              onClick={handleLoginReset}
-              className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
+        {/* Bottom Tagline */}
+        <div className="absolute bottom-0 left-0 right-0 py-6 z-10">
+          <p className="text-white text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase drop-shadow-lg">
+            Unlock Your Peak Performance
+          </p>
+        </div>
       </main>
 
-      {/* Bottom Section */}
-      <footer className="relative z-10 bg-white py-6 px-8">
-        <p className="text-black text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase">
-          Unlock Your Peak Performance
-        </p>
-        <p className="text-gray-500 text-xs mt-3">
-          Copyright &copy; 2025 Dallas Sports Collective. All Rights Reserved.
-        </p>
-      </footer>
-
-      {/* Login Waiver Modal */}
+      {/* Sign-in Waiver Modal */}
       {state === 'waiver' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
@@ -724,15 +646,15 @@ export default function CheckinPage() {
               {/* Buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleLoginReset}
-                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-[25px] font-bold hover:bg-gray-50 transition-colors"
+                  onClick={handleReset}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-full font-bold hover:bg-gray-50 transition-colors"
                 >
                   CANCEL
                 </button>
                 <button
                   onClick={handleWaiverSign}
                   disabled={!waiverAgreed || !legalName.trim() || waiverLoading}
-                  className="flex-1 px-6 py-3 bg-black text-white rounded-[25px] font-bold hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-6 py-3 bg-black text-white rounded-full font-bold hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {waiverLoading ? 'SIGNING...' : 'SIGN AND SUBMIT'}
                 </button>
@@ -743,7 +665,7 @@ export default function CheckinPage() {
       )}
 
       {/* Register Waiver Modal */}
-      {showRegisterWaiver && registerState === 'input' && (
+      {showWaiver && registerState === 'input' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
             {/* Modal Header */}
@@ -807,15 +729,15 @@ export default function CheckinPage() {
               {/* Buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowRegisterWaiver(false)}
-                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-[25px] font-bold hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowWaiver(false)}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-full font-bold hover:bg-gray-50 transition-colors"
                 >
                   BACK
                 </button>
                 <button
-                  onClick={handleRegisterComplete}
+                  onClick={handleRegister}
                   disabled={!registerWaiverAgreed || !registerLegalName.trim()}
-                  className="flex-1 px-6 py-3 bg-black text-white rounded-[25px] font-bold hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-6 py-3 bg-black text-white rounded-full font-bold hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   REGISTER
                 </button>
