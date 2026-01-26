@@ -275,14 +275,14 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-black text-white p-4">
+      <header className="bg-black text-white p-3 md:p-4">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-black tracking-tight">DSC ADMIN</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm">{user?.name}</span>
+          <h1 className="text-lg md:text-xl font-black tracking-tight">DSC ADMIN</h1>
+          <div className="flex items-center gap-2 md:gap-4">
+            <span className="text-xs md:text-sm hidden sm:inline">{user?.name}</span>
             <button
               onClick={handleLogout}
-              className="text-sm bg-white text-black px-3 py-1 rounded font-medium"
+              className="text-xs md:text-sm bg-white text-black px-2 md:px-3 py-1 rounded font-medium"
             >
               Logout
             </button>
@@ -292,15 +292,15 @@ export default function AdminDashboard() {
 
       {/* Walk-ins Alert */}
       {walkIns.length > 0 && (
-        <div className="bg-orange-500 text-white p-4">
+        <div className="bg-orange-500 text-white p-3 md:p-4">
           <div className="max-w-4xl mx-auto">
-            <div className="font-bold mb-2">WALK-INS ({walkIns.length})</div>
+            <div className="font-bold mb-2 text-sm md:text-base">WALK-INS ({walkIns.length})</div>
             <div className="space-y-2">
               {walkIns.map((walkIn) => (
-                <div key={walkIn.id} className="flex items-center justify-between bg-white/10 rounded p-2">
-                  <span>{walkIn.name} - {new Date(walkIn.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <div key={walkIn.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/10 rounded p-2 gap-2">
+                  <span className="text-sm md:text-base">{walkIn.name} - {new Date(walkIn.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   <select
-                    className="bg-white text-black rounded px-2 py-1 text-sm"
+                    className="bg-white text-black rounded px-2 py-1 text-xs md:text-sm"
                     defaultValue=""
                     onChange={(e) => e.target.value && assignWalkIn(walkIn.id, e.target.value)}
                     disabled={assigningWalkIn === walkIn.id}
@@ -317,10 +317,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto py-8 px-4">
+      <main className="max-w-4xl mx-auto py-4 md:py-8 px-3 md:px-4">
         {/* Command Input */}
-        <div className="mb-8">
-          <div className="flex gap-3">
+        <div className="mb-4 md:mb-8">
+          <div className="flex gap-2 md:gap-3">
             <input
               type="text"
               value={input}
@@ -330,20 +330,20 @@ export default function AdminDashboard() {
                   handleCommand()
                 }
               }}
-              placeholder="Type a command... (e.g., 'Show all athletes', 'Add trainer John Doe')"
-              className="flex-1 px-4 py-3 border-2 border-black rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-black"
+              placeholder="Type a command..."
+              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-black rounded-lg text-sm md:text-lg focus:outline-none focus:ring-2 focus:ring-black"
               disabled={loading}
             />
             <button
               onClick={handleCommand}
               disabled={loading || !input.trim()}
-              className="px-6 py-3 bg-black text-white font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 md:px-6 py-2 md:py-3 bg-black text-white font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
             >
               {loading ? '...' : 'Go'}
             </button>
           </div>
           {result && (
-            <div className={`mt-3 p-3 rounded-lg ${
+            <div className={`mt-2 md:mt-3 p-2 md:p-3 rounded-lg text-sm md:text-base ${
               result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
             }`}>
               {result.message}
@@ -355,22 +355,22 @@ export default function AdminDashboard() {
         <div className="border-b-4 border-black">
           <button
             onClick={() => setCalendarOpen(!calendarOpen)}
-            className="w-full flex justify-between items-center py-6 px-4"
+            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-3xl font-black tracking-tight">CALENDAR</span>
-            <span className="text-3xl font-light">{calendarOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight">CALENDAR</span>
+            <span className="text-xl md:text-3xl font-light">{calendarOpen ? '−' : '+'}</span>
           </button>
 
           {calendarOpen && (
-            <div className="px-4 pb-6">
+            <div className="px-3 md:px-4 pb-4 md:pb-6">
               {/* View Toggle */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                <div className="flex gap-1 md:gap-2">
                   {(['day', 'week', 'month'] as CalendarView[]).map((view) => (
                     <button
                       key={view}
                       onClick={() => setCalendarView(view)}
-                      className={`px-4 py-2 text-sm font-medium rounded ${
+                      className={`px-2 md:px-4 py-1 md:py-2 text-xs md:text-sm font-medium rounded ${
                         calendarView === view
                           ? 'bg-black text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -380,17 +380,17 @@ export default function AdminDashboard() {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-4">
-                  <button onClick={() => navigateDate('prev')} className="p-2 hover:bg-gray-100 rounded">
+                <div className="flex items-center gap-2 md:gap-4">
+                  <button onClick={() => navigateDate('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base">
                     &larr;
                   </button>
-                  <span className="font-medium min-w-[200px] text-center">{formatDateHeader()}</span>
-                  <button onClick={() => navigateDate('next')} className="p-2 hover:bg-gray-100 rounded">
+                  <span className="font-medium min-w-[120px] md:min-w-[200px] text-center text-xs md:text-base">{formatDateHeader()}</span>
+                  <button onClick={() => navigateDate('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base">
                     &rarr;
                   </button>
                   <button
                     onClick={() => setCurrentDate(new Date())}
-                    className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
+                    className="px-2 md:px-3 py-1 text-xs md:text-sm bg-gray-100 rounded hover:bg-gray-200"
                   >
                     Today
                   </button>
@@ -398,32 +398,32 @@ export default function AdminDashboard() {
               </div>
 
               {/* Sessions List */}
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {Object.keys(groupedSessions).length === 0 ? (
-                  <p className="text-gray-500 py-8 text-center">No sessions in this period</p>
+                  <p className="text-gray-500 py-6 md:py-8 text-center text-sm md:text-base">No sessions in this period</p>
                 ) : (
                   Object.entries(groupedSessions)
                     .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
                     .map(([date, daySessions]) => (
                       <div key={date} className="border rounded-lg overflow-hidden">
-                        <div className="bg-gray-100 px-4 py-2 font-medium">
+                        <div className="bg-gray-100 px-3 md:px-4 py-2 font-medium text-sm md:text-base">
                           {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                         </div>
                         <div className="divide-y">
                           {daySessions
                             .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
                             .map((session) => (
-                              <div key={session.id} className="px-4 py-3 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <span className="font-mono text-sm w-20">{formatTime(session.scheduledAt)}</span>
-                                  <span className="font-medium">
+                              <div key={session.id} className="px-3 md:px-4 py-2 md:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4">
+                                <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                                  <span className="font-mono text-xs md:text-sm w-16 md:w-20">{formatTime(session.scheduledAt)}</span>
+                                  <span className="font-medium text-sm md:text-base">
                                     {session.athlete.firstName} {session.athlete.lastName}
                                   </span>
-                                  <span className="text-gray-500 text-sm">
+                                  <span className="text-gray-500 text-xs md:text-sm">
                                     with {session.trainer.user.name}
                                   </span>
                                 </div>
-                                <span className={`text-sm font-medium ${
+                                <span className={`text-xs md:text-sm font-medium ${
                                   session.cancelled ? 'text-red-600' :
                                   session.completed ? 'text-green-600' : 'text-gray-400'
                                 }`}>
@@ -444,35 +444,35 @@ export default function AdminDashboard() {
         <div className="border-b-4 border-black">
           <button
             onClick={() => setTrainersOpen(!trainersOpen)}
-            className="w-full flex justify-between items-center py-6 px-4"
+            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-3xl font-black tracking-tight">TRAINERS</span>
-            <span className="text-3xl font-light">{trainersOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight">TRAINERS</span>
+            <span className="text-xl md:text-3xl font-light">{trainersOpen ? '−' : '+'}</span>
           </button>
 
           {trainersOpen && (
-            <div className="px-4 pb-6">
+            <div className="px-3 md:px-4 pb-4 md:pb-6">
               <div className="space-y-3">
                 {trainers.map((trainer) => (
-                  <div key={trainer.id} className="border rounded-lg p-4">
+                  <div key={trainer.id} className="border rounded-lg p-3 md:p-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="font-bold text-lg">{trainer.user.name}</div>
-                        <div className="text-gray-500 text-sm">{trainer.user.email}</div>
+                        <div className="font-bold text-base md:text-lg">{trainer.user.name}</div>
+                        <div className="text-gray-500 text-xs md:text-sm">{trainer.user.email}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-2xl font-bold">{trainer.totalAthletes}</div>
-                        <div className="text-gray-500 text-xs">athletes</div>
+                        <div className="text-xl md:text-2xl font-bold">{trainer.totalAthletes}</div>
+                        <div className="text-gray-500 text-[10px] md:text-xs">athletes</div>
                       </div>
                     </div>
                     {trainer.todaySessions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t">
-                        <div className="text-sm text-gray-500 mb-2">Today&apos;s Sessions</div>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t">
+                        <div className="text-xs md:text-sm text-gray-500 mb-2">Today&apos;s Sessions</div>
+                        <div className="flex flex-wrap gap-1 md:gap-2">
                           {trainer.todaySessions.map((session) => (
                             <span
                               key={session.id}
-                              className={`text-xs px-2 py-1 rounded ${
+                              className={`text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded ${
                                 session.completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                               }`}
                             >
@@ -493,23 +493,23 @@ export default function AdminDashboard() {
         <div className="border-b-4 border-black">
           <button
             onClick={() => setAthletesOpen(!athletesOpen)}
-            className="w-full flex justify-between items-center py-6 px-4"
+            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-3xl font-black tracking-tight">ATHLETES</span>
-            <span className="text-3xl font-light">{athletesOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight">ATHLETES</span>
+            <span className="text-xl md:text-3xl font-light">{athletesOpen ? '−' : '+'}</span>
           </button>
 
           {athletesOpen && (
-            <div className="px-4 pb-6">
-              <div className="mb-4 text-gray-500">{allAthletes.length} athletes total</div>
+            <div className="px-3 md:px-4 pb-4 md:pb-6">
+              <div className="mb-3 md:mb-4 text-gray-500 text-sm md:text-base">{allAthletes.length} athletes total</div>
               <div className="space-y-2">
                 {allAthletes.map((athlete) => (
-                  <div key={athlete.id} className="border rounded-lg p-3 flex justify-between items-center">
+                  <div key={athlete.id} className="border rounded-lg p-2 md:p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
                     <div>
-                      <div className="font-medium">{athlete.firstName} {athlete.lastName}</div>
-                      <div className="text-gray-500 text-sm">{athlete.email}</div>
+                      <div className="font-medium text-sm md:text-base">{athlete.firstName} {athlete.lastName}</div>
+                      <div className="text-gray-500 text-xs md:text-sm">{athlete.email}</div>
                     </div>
-                    <div className="text-gray-500 text-sm">
+                    <div className="text-gray-500 text-xs md:text-sm">
                       {athlete.trainerName}
                     </div>
                   </div>

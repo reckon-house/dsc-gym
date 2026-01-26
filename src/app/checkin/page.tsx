@@ -305,14 +305,15 @@ export default function CheckinPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white p-5">
+    <div className="min-h-screen flex flex-col bg-white p-3 md:p-5">
       {/* Logo Block - Top Left corner of image (overlapping) */}
       <div className="absolute top-0 left-0 z-20">
         <Image
           src="/logo-block.png"
           alt="DSC"
-          width={80}
-          height={80}
+          width={60}
+          height={60}
+          className="w-[50px] h-[50px] md:w-[80px] md:h-[80px]"
         />
       </div>
 
@@ -334,40 +335,40 @@ export default function CheckinPage() {
 
         {/* LANDING VIEW */}
         {view === 'landing' && (
-          <div className="absolute left-[150px] bottom-[150px]">
+          <div className="absolute left-[clamp(20px,10vw,150px)] bottom-[clamp(40px,10vw,150px)]">
             <button
               onClick={() => setView('register')}
-              className="group flex items-center gap-3 mb-4 text-left"
+              className="group flex items-center gap-2 md:gap-3 mb-2 md:mb-4 text-left"
             >
-              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg leading-[1.1]" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+              <span className="text-white font-extrabold tracking-tight drop-shadow-lg leading-[1.1]" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(28px, 5vw, 64px)' }}>
                 NEW ATHLETE<br />REGISTRATION
               </span>
-              <span className="text-white text-5xl font-light opacity-80 group-hover:translate-x-2 transition-transform">&#9735;</span>
+              <span className="text-white font-light opacity-80 group-hover:translate-x-2 transition-transform" style={{ fontSize: 'clamp(24px, 4vw, 48px)' }}>&#9735;</span>
             </button>
 
             <button
               onClick={() => setView('login')}
-              className="group flex items-center gap-3 text-left"
+              className="group flex items-center gap-2 md:gap-3 text-left"
             >
-              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+              <span className="text-white font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(28px, 5vw, 64px)' }}>
                 ATHLETE LOGIN
               </span>
-              <span className="text-white text-5xl font-light opacity-80 group-hover:translate-x-2 transition-transform">&#9735;</span>
+              <span className="text-white font-light opacity-80 group-hover:translate-x-2 transition-transform" style={{ fontSize: 'clamp(24px, 4vw, 48px)' }}>&#9735;</span>
             </button>
           </div>
         )}
 
         {/* REGISTER VIEW */}
         {view === 'register' && registerState === 'input' && !showWaiver && (
-          <div className="absolute left-[150px] bottom-[150px] max-w-2xl">
+          <div className="absolute left-[clamp(20px,10vw,150px)] bottom-[clamp(40px,10vw,150px)] right-[clamp(20px,10vw,150px)] max-w-2xl">
             <button
               onClick={() => setView('landing')}
-              className="group flex items-center gap-3 mb-8 text-left"
+              className="group flex items-center gap-2 md:gap-3 mb-4 md:mb-8 text-left"
             >
-              <span className="text-white text-[48px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+              <span className="text-white font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(24px, 4vw, 48px)' }}>
                 JOIN THE DALLAS SPORT COLLECTIVE
               </span>
-              <span className="text-white text-4xl font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform">&#9735;</span>
+              <span className="text-white font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform" style={{ fontSize: 'clamp(20px, 3vw, 32px)' }}>&#9735;</span>
             </button>
 
             <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
@@ -473,15 +474,15 @@ export default function CheckinPage() {
 
         {/* LOGIN VIEW */}
         {view === 'login' && state === 'input' && (
-          <div className="absolute left-[150px] bottom-[150px] max-w-2xl">
+          <div className="absolute left-[clamp(20px,10vw,150px)] bottom-[clamp(40px,10vw,150px)] right-[clamp(20px,10vw,150px)] max-w-2xl">
             <button
               onClick={() => setView('landing')}
-              className="group flex items-center gap-3 mb-8 text-left"
+              className="group flex items-center gap-2 md:gap-3 mb-4 md:mb-8 text-left"
             >
-              <span className="text-white text-[48px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+              <span className="text-white font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(24px, 4vw, 48px)' }}>
                 ATHLETE LOGIN
               </span>
-              <span className="text-white text-4xl font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform">&#9735;</span>
+              <span className="text-white font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform" style={{ fontSize: 'clamp(20px, 3vw, 32px)' }}>&#9735;</span>
             </button>
 
             <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
@@ -622,11 +623,11 @@ export default function CheckinPage() {
       </div>
 
       {/* Footer - below the inset image */}
-      <footer className="bg-white pt-4 pb-2">
-        <p className="text-black text-[48px] font-medium tracking-[0.4em] uppercase" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+      <footer className="bg-white pt-3 md:pt-4 pb-2">
+        <p className="text-black font-medium uppercase" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(16px, 3.5vw, 48px)', letterSpacing: 'clamp(0.1em, 2vw, 0.4em)' }}>
           Unlock Your Peak Performance
         </p>
-        <p className="text-gray-500 text-xs mt-2">
+        <p className="text-gray-500 text-xs mt-1 md:mt-2">
           Copyright &copy; 2025 Dallas Sports Collective. All Rights Reserved.
         </p>
       </footer>

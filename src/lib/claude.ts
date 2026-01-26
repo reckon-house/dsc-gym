@@ -3,9 +3,20 @@ import { getStaticTrainerPrompt, buildDynamicTrainerContext, type ParsingContext
 import { parseClaudeResponse } from './parsing/schema'
 import type { ParseResult } from '@/types'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+// Lazy initialization to ensure env vars are loaded
+let anthropicClient: Anthropic | null = null
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    // Use CLAUDE_KEY as ANTHROPIC_API_KEY gets filtered by Next.js
+    const apiKey = process.env.CLAUDE_KEY || process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      throw new Error('CLAUDE_KEY environment variable is not set')
+    }
+    anthropicClient = new Anthropic({ apiKey })
+  }
+  return anthropicClient
+}
 
 export async function parseSchedulingInput(
   input: string,
@@ -18,6 +29,7 @@ export async function parseSchedulingInput(
   const dynamicContext = buildDynamicTrainerContext(context)
 
   try {
+    const anthropic = getAnthropicClient()
     const response = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022',
       max_tokens: 1024,

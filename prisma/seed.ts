@@ -1,24 +1,8 @@
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import bcrypt from 'bcryptjs'
 import 'dotenv/config'
 
-function createPrismaClient() {
-  // Use Turso in production, local SQLite in development
-  if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
-    console.log('Using Turso database:', process.env.TURSO_DATABASE_URL)
-    const adapter = new PrismaLibSql({
-      url: process.env.TURSO_DATABASE_URL,
-      authToken: process.env.TURSO_AUTH_TOKEN,
-    })
-    return new PrismaClient({ adapter })
-  }
-
-  console.log('Using local SQLite database')
-  return new PrismaClient()
-}
-
-const prisma = createPrismaClient()
+const prisma = new PrismaClient()
 
 async function main() {
   console.log('Seeding database...')

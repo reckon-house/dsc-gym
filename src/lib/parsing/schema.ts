@@ -16,9 +16,30 @@ const ParsedSessionSchema = z.object({
 })
 
 const ParsedAthleteSchema = z.object({
+  id: z.string().nullable().optional(),
   firstName: z.string(),
   lastName: z.string(),
   email: z.string().optional(),
+})
+
+const ParsedQuerySchema = z.object({
+  queryType: z.enum([
+    'SESSIONS_LIST',
+    'SESSIONS_COUNT',
+    'ATHLETES_LIST',
+    'ATHLETES_COUNT',
+    'SCHEDULE_SUMMARY',
+    'CHECKINS_LIST',
+    'ATTENDANCE_REPORT',
+  ]),
+  filters: z.object({
+    athleteId: z.string().nullable().optional(),
+    athleteName: z.string().nullable().optional(),
+    dateFrom: z.string().nullable().optional(),
+    dateTo: z.string().nullable().optional(),
+    status: z.enum(['all', 'completed', 'upcoming', 'cancelled']).optional(),
+  }).optional().default({}),
+  description: z.string(),
 })
 
 const ParseResultSchema = z.object({
@@ -28,6 +49,7 @@ const ParseResultSchema = z.object({
     'UPDATE_SESSION',
     'CANCEL_SESSION',
     'CREATE_ATHLETE',
+    'DELETE_ATHLETE',
     'QUERY',
     'UNKNOWN',
   ]),
@@ -35,6 +57,7 @@ const ParseResultSchema = z.object({
   data: z.object({
     session: ParsedSessionSchema.optional(),
     athlete: ParsedAthleteSchema.optional(),
+    query: ParsedQuerySchema.optional(),
   }),
   clarificationNeeded: z.string().nullable().optional(),
   humanReadableSummary: z.string(),
@@ -68,7 +91,27 @@ export function parseClaudeResponse(responseText: string): ParseResult {
               recurrenceEndDate: validated.data.session.recurrenceEndDate ?? undefined,
             }
           : undefined,
-        athlete: validated.data.athlete,
+        athlete: validated.data.athlete
+          ? {
+              id: validated.data.athlete.id ?? undefined,
+              firstName: validated.data.athlete.firstName,
+              lastName: validated.data.athlete.lastName,
+              email: validated.data.athlete.email,
+            }
+          : undefined,
+        query: validated.data.query
+          ? {
+              queryType: validated.data.query.queryType as import('@/types').QueryType,
+              filters: {
+                athleteId: validated.data.query.filters?.athleteId ?? undefined,
+                athleteName: validated.data.query.filters?.athleteName ?? undefined,
+                dateFrom: validated.data.query.filters?.dateFrom ?? undefined,
+                dateTo: validated.data.query.filters?.dateTo ?? undefined,
+                status: validated.data.query.filters?.status,
+              },
+              description: validated.data.query.description,
+            }
+          : undefined,
       },
       clarificationNeeded: validated.clarificationNeeded ?? undefined,
       humanReadableSummary: validated.humanReadableSummary,

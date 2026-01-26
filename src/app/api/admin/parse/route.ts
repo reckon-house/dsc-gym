@@ -122,9 +122,15 @@ export async function POST(request: NextRequest) {
     const staticPrompt = getStaticAdminPrompt()
     const dynamicContext = buildDynamicAdminContext(context)
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
+    const apiKey = process.env.CLAUDE_KEY || process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { success: false, error: 'CLAUDE_KEY not configured' },
+        { status: 500 }
+      )
+    }
+
+    const anthropic = new Anthropic({ apiKey })
 
     const response = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022',
