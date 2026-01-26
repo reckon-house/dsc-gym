@@ -36,6 +36,7 @@ export interface ParsedSession {
 }
 
 export interface ParsedAthlete {
+  id?: string
   firstName: string
   lastName: string
   email?: string
