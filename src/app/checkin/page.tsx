@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 
-type Tab = 'signin' | 'register'
+type View = 'landing' | 'register' | 'login'
 type CheckinState = 'input' | 'loading' | 'waiver' | 'success' | 'no-session' | 'walk-in' | 'error'
 type RegisterState = 'input' | 'loading' | 'success' | 'error'
 
@@ -50,8 +50,8 @@ Dallas Sports Collective, LLC, any staff member or agent does not provide medica
 I have read and fully understand the terms of this Agreement and understand that I am giving up legal rights by signing this Agreement. I acknowledge that I am signing this agreement freely and voluntarily without any inducement, assurance, or guarantee being made to me and intend my signature to be complete and unconditional release of all liability to the greatest extent allowed by law.`
 
 export default function CheckinPage() {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<Tab>('signin')
+  // View state
+  const [view, setView] = useState<View>('landing')
 
   // Sign-in state
   const [email, setEmail] = useState('')
@@ -88,6 +88,7 @@ export default function CheckinPage() {
         setLegalName('')
         setWaiverAgreed(false)
         setHasScrolledToBottom(false)
+        setView('landing')
       }, 5000)
       return () => clearTimeout(timer)
     }
@@ -107,8 +108,7 @@ export default function CheckinPage() {
         setRegisterWaiverAgreed(false)
         setRegisterHasScrolledToBottom(false)
         setShowWaiver(false)
-        // Switch to sign-in tab after successful registration
-        setActiveTab('signin')
+        setView('landing')
       }, 5000)
       return () => clearTimeout(timer)
     }
@@ -305,295 +305,327 @@ export default function CheckinPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header with Logo */}
-      <header className="bg-white py-6 px-4 flex flex-col items-center">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Full-screen Background Image */}
+      <div className="absolute inset-0">
         <Image
-          src="/dsc-logo.svg"
-          alt="Dallas Sports Collective"
-          width={80}
-          height={80}
+          src="/checkin-bg-flip.jpg"
+          alt="Gym"
+          fill
+          className="object-cover"
+          priority
         />
-        <h1 className="mt-2 text-xl font-bold tracking-[0.2em] text-gray-800">
-          DALLAS SPORTS COLLECTIVE
-        </h1>
-      </header>
+      </div>
 
-      {/* Main Content with Background Image */}
-      <main className="flex-1 relative">
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <Image
-            src="/checkin-bg-flip.jpg"
-            alt="Gym"
-            fill
-            className="object-cover"
-            priority
-          />
-        </div>
+      {/* Logo Block - Top Left */}
+      <div className="absolute top-6 left-6 z-20">
+        <Image
+          src="/logo-block.png"
+          alt="DSC"
+          width={60}
+          height={60}
+        />
+      </div>
 
-        {/* Logo Block - Top Left */}
-        <div className="absolute top-4 left-4 z-20">
-          <Image
-            src="/logo-block.png"
-            alt="DSC"
-            width={60}
-            height={60}
-          />
-        </div>
+      {/* Main Content */}
+      <main className="flex-1 relative z-10">
 
-        {/* Overlay Content */}
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-4">
-          {/* Tab Buttons */}
-          {(state === 'input' || registerState === 'input') && !showWaiver && (
-            <div className="flex mb-6 bg-white/30 backdrop-blur rounded-full p-1 shadow-lg">
+        {/* LANDING VIEW */}
+        {view === 'landing' && (
+          <div className="absolute left-[150px] bottom-[150px]">
+            <button
+              onClick={() => setView('register')}
+              className="group flex items-center gap-3 mb-4 text-left"
+            >
+              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+                NEW ATHLETE REGISTRATION
+              </span>
+              <span className="text-white text-5xl font-light opacity-80 group-hover:translate-x-2 transition-transform">&#9735;</span>
+            </button>
+
+            <button
+              onClick={() => setView('login')}
+              className="group flex items-center gap-3 text-left"
+            >
+              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+                ATHLETE LOGIN
+              </span>
+              <span className="text-white text-5xl font-light opacity-80 group-hover:translate-x-2 transition-transform">&#9735;</span>
+            </button>
+          </div>
+        )}
+
+        {/* REGISTER VIEW */}
+        {view === 'register' && registerState === 'input' && !showWaiver && (
+          <div className="absolute left-[150px] bottom-[150px] max-w-2xl">
+            <button
+              onClick={() => setView('landing')}
+              className="group flex items-center gap-3 mb-8 text-left"
+            >
+              <span className="text-white text-[48px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+                JOIN THE DALLAS SPORT COLLECTIVE
+              </span>
+              <span className="text-white text-4xl font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform">&#9735;</span>
+            </button>
+
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
+              <p className="font-bold text-sm md:text-base mb-4 text-black">
+                WELCOME! THIS IS THE DALLAS SPORT COLLECTIVE AI POWERED GYM APP. LET&apos;S GET A LITTLE INFO FROM YOU BEFORE YOU JOIN.
+              </p>
+
+              <form onSubmit={(e) => { e.preventDefault(); setRegisterError(''); setShowWaiver(true); }} className="space-y-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="FIRST NAME"
+                    className="flex-1 px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                  />
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="LAST NAME"
+                    className="flex-1 px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                  />
+                </div>
+                <input
+                  type="email"
+                  value={registerEmail}
+                  onChange={(e) => setRegisterEmail(e.target.value)}
+                  placeholder="EMAIL"
+                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="PASSWORD"
+                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="CONFIRM PASSWORD"
+                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                />
+                {registerError && (
+                  <p className="text-red-500 text-sm text-center">{registerError}</p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full px-6 py-3 text-base font-bold bg-black text-white rounded-lg hover:bg-gray-900 transition-colors"
+                >
+                  CONTINUE TO WAIVER
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Register Loading */}
+        {registerState === 'loading' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
+              <div className="text-white text-xl mb-4">Creating your account...</div>
+              <div className="animate-pulse text-white text-4xl">...</div>
+            </div>
+          </div>
+        )}
+
+        {/* Register Success */}
+        {registerState === 'success' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <div className="text-6xl text-green-400">&#10003;</div>
+              <h2 className="text-3xl font-black text-white">
+                Welcome, {firstName}!
+              </h2>
+              <div className="bg-green-500/20 rounded-lg p-4">
+                <p className="text-xl text-white">Registration complete!</p>
+                <p className="text-gray-300 mt-2">
+                  You can now sign in with your email
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Register Error */}
+        {registerState === 'error' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <div className="text-6xl text-red-500">!</div>
+              <p className="text-xl text-red-400">{registerError}</p>
               <button
-                onClick={() => setActiveTab('signin')}
-                className={`px-8 py-3 rounded-full text-sm font-bold tracking-wider transition-all ${
-                  activeTab === 'signin'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-white hover:bg-white/20'
-                }`}
+                onClick={handleRegisterReset}
+                className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
               >
-                SIGN IN
-              </button>
-              <button
-                onClick={() => setActiveTab('register')}
-                className={`px-8 py-3 rounded-full text-sm font-bold tracking-wider transition-all ${
-                  activeTab === 'register'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-white hover:bg-white/20'
-                }`}
-              >
-                REGISTER
+                Try Again
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* SIGN IN TAB */}
-          {activeTab === 'signin' && (
-            <>
-              {/* Input State */}
-              {state === 'input' && (
-                <form onSubmit={handleEmailSubmit} className="w-full max-w-md space-y-4">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ENTER EMAIL"
-                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                    autoFocus
-                  />
-                  <button
-                    type="submit"
-                    className="w-full px-6 py-4 text-base font-black tracking-wider bg-black text-white rounded-full hover:bg-gray-900 transition-colors shadow-lg"
-                  >
-                    SIGN IN
-                  </button>
-                </form>
-              )}
+        {/* LOGIN VIEW */}
+        {view === 'login' && state === 'input' && (
+          <div className="absolute left-[150px] bottom-[150px] max-w-2xl">
+            <button
+              onClick={() => setView('landing')}
+              className="group flex items-center gap-3 mb-8 text-left"
+            >
+              <span className="text-white text-[48px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+                ATHLETE LOGIN
+              </span>
+              <span className="text-white text-4xl font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform">&#9735;</span>
+            </button>
 
-              {/* Loading State */}
-              {state === 'loading' && (
-                <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
-                  <div className="text-white text-xl mb-4">Finding your session...</div>
-                  <div className="animate-pulse text-white text-4xl">...</div>
-                </div>
-              )}
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
+              <p className="font-bold text-sm md:text-base mb-4 text-black">
+                SIGN IN BEFORE YOUR SESSION BEGINS
+              </p>
 
-              {/* Success State */}
-              {state === 'success' && data && data.athlete && data.trainer && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <div className="text-6xl text-green-400">&#10003;</div>
-                  <h2 className="text-3xl font-black text-white">
-                    Welcome, {data.athlete.firstName}!
-                  </h2>
-                  <div className="bg-white/10 rounded-lg p-4 space-y-2">
-                    <p className="text-xl text-white">Trainer: {data.trainer.name}</p>
-                    {data.session && (
-                      <p className="text-lg text-gray-300">
-                        Session at{' '}
-                        {new Date(data.session.scheduledAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleReset}
-                    className="text-white/70 underline text-sm hover:text-white"
-                  >
-                    Check in another person
-                  </button>
-                </div>
-              )}
+              <form onSubmit={handleEmailSubmit} className="space-y-4">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="ENTER EMAIL"
+                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                  autoFocus
+                />
+                {error && (
+                  <p className="text-red-500 text-sm text-center">{error}</p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full px-6 py-3 text-base font-bold bg-black text-white rounded-lg hover:bg-gray-900 transition-colors"
+                >
+                  SIGN IN
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
 
-              {/* No Session State */}
-              {state === 'no-session' && data && data.athlete && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <h2 className="text-3xl font-black text-white">
-                    Welcome, {data.athlete.firstName}!
-                  </h2>
-                  <div className="bg-yellow-500/20 rounded-lg p-4">
-                    <p className="text-xl text-white">No session scheduled for today</p>
-                    {data.nextSession && (
-                      <p className="text-gray-300 mt-2">
-                        Next session:{' '}
-                        {new Date(data.nextSession.scheduledAt).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleReset}
-                    className="text-white/70 underline text-sm hover:text-white"
-                  >
-                    Check in another person
-                  </button>
-                </div>
-              )}
+        {/* Login Loading */}
+        {view === 'login' && state === 'loading' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
+              <div className="text-white text-xl mb-4">Finding your session...</div>
+              <div className="animate-pulse text-white text-4xl">...</div>
+            </div>
+          </div>
+        )}
 
-              {/* Walk-in State */}
-              {state === 'walk-in' && data && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <div className="text-6xl">&#128075;</div>
-                  <h2 className="text-3xl font-black text-white">
-                    Welcome, {data.walkIn?.name}!
-                  </h2>
-                  <div className="bg-blue-500/20 rounded-lg p-4">
-                    <p className="text-xl text-white">You&apos;ve been checked in as a walk-in</p>
-                    <p className="text-gray-300 mt-2">
-                      Please speak with a trainer to get set up with an account
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleReset}
-                    className="text-white/70 underline text-sm hover:text-white"
-                  >
-                    Check in another person
-                  </button>
-                </div>
-              )}
+        {/* Login Success */}
+        {view === 'login' && state === 'success' && data && data.athlete && data.trainer && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <div className="text-6xl text-green-400">&#10003;</div>
+              <h2 className="text-3xl font-black text-white">
+                Welcome, {data.athlete.firstName}!
+              </h2>
+              <div className="bg-white/10 rounded-lg p-4 space-y-2">
+                <p className="text-xl text-white">Trainer: {data.trainer.name}</p>
+                {data.session && (
+                  <p className="text-lg text-gray-300">
+                    Session at{' '}
+                    {new Date(data.session.scheduledAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleReset}
+                className="text-white/70 underline text-sm hover:text-white"
+              >
+                Check in another person
+              </button>
+            </div>
+          </div>
+        )}
 
-              {/* Error State */}
-              {state === 'error' && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <div className="text-6xl text-red-500">!</div>
-                  <p className="text-xl text-red-400">{error}</p>
-                  <button
-                    onClick={handleReset}
-                    className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+        {/* Login No Session */}
+        {view === 'login' && state === 'no-session' && data && data.athlete && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <h2 className="text-3xl font-black text-white">
+                Welcome, {data.athlete.firstName}!
+              </h2>
+              <div className="bg-yellow-500/20 rounded-lg p-4">
+                <p className="text-xl text-white">No session scheduled for today</p>
+                {data.nextSession && (
+                  <p className="text-gray-300 mt-2">
+                    Next session:{' '}
+                    {new Date(data.nextSession.scheduledAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleReset}
+                className="text-white/70 underline text-sm hover:text-white"
+              >
+                Check in another person
+              </button>
+            </div>
+          </div>
+        )}
 
-          {/* REGISTER TAB */}
-          {activeTab === 'register' && (
-            <>
-              {/* Input State */}
-              {registerState === 'input' && !showWaiver && (
-                <form onSubmit={(e) => { e.preventDefault(); setRegisterError(''); setShowWaiver(true); }} className="w-full max-w-md space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="FIRST NAME"
-                      className="flex-1 px-4 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                    />
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="LAST NAME"
-                      className="flex-1 px-4 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                    />
-                  </div>
-                  <input
-                    type="email"
-                    value={registerEmail}
-                    onChange={(e) => setRegisterEmail(e.target.value)}
-                    placeholder="EMAIL"
-                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="PASSWORD"
-                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="CONFIRM PASSWORD"
-                    className="w-full px-6 py-4 text-base font-medium tracking-wider text-center bg-white rounded-full focus:outline-none focus:ring-4 focus:ring-white/50 placeholder:text-gray-400 shadow-lg"
-                  />
-                  {registerError && (
-                    <p className="text-red-400 text-center text-sm bg-black/50 rounded-lg py-2">{registerError}</p>
-                  )}
-                  <button
-                    type="submit"
-                    className="w-full px-6 py-4 text-base font-black tracking-wider bg-black text-white rounded-full hover:bg-gray-900 transition-colors shadow-lg"
-                  >
-                    CONTINUE TO WAIVER
-                  </button>
-                </form>
-              )}
+        {/* Login Walk-in */}
+        {view === 'login' && state === 'walk-in' && data && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <div className="text-6xl">&#128075;</div>
+              <h2 className="text-3xl font-black text-white">
+                Welcome, {data.walkIn?.name}!
+              </h2>
+              <div className="bg-blue-500/20 rounded-lg p-4">
+                <p className="text-xl text-white">You&apos;ve been checked in as a walk-in</p>
+                <p className="text-gray-300 mt-2">
+                  Please speak with a trainer to get set up with an account
+                </p>
+              </div>
+              <button
+                onClick={handleReset}
+                className="text-white/70 underline text-sm hover:text-white"
+              >
+                Check in another person
+              </button>
+            </div>
+          </div>
+        )}
 
-              {/* Loading State */}
-              {registerState === 'loading' && (
-                <div className="text-center bg-black/70 backdrop-blur rounded-2xl p-8">
-                  <div className="text-white text-xl mb-4">Creating your account...</div>
-                  <div className="animate-pulse text-white text-4xl">...</div>
-                </div>
-              )}
-
-              {/* Success State */}
-              {registerState === 'success' && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <div className="text-6xl text-green-400">&#10003;</div>
-                  <h2 className="text-3xl font-black text-white">
-                    Welcome, {firstName}!
-                  </h2>
-                  <div className="bg-green-500/20 rounded-lg p-4">
-                    <p className="text-xl text-white">Registration complete!</p>
-                    <p className="text-gray-300 mt-2">
-                      You can now sign in with your email
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Error State */}
-              {registerState === 'error' && (
-                <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
-                  <div className="text-6xl text-red-500">!</div>
-                  <p className="text-xl text-red-400">{registerError}</p>
-                  <button
-                    onClick={handleRegisterReset}
-                    className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Bottom Tagline */}
-        <div className="absolute bottom-0 left-0 right-0 py-6 z-10">
-          <p className="text-white text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase drop-shadow-lg">
-            Unlock Your Peak Performance
-          </p>
-        </div>
+        {/* Login Error */}
+        {view === 'login' && state === 'error' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
+              <div className="text-6xl text-red-500">!</div>
+              <p className="text-xl text-red-400">{error}</p>
+              <button
+                onClick={() => { handleReset(); setView('login'); }}
+                className="px-6 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-100"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Bottom Section */}
+      <footer className="relative z-10 bg-white py-6 px-8">
+        <p className="text-black text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase">
+          Unlock Your Peak Performance
+        </p>
+        <p className="text-gray-500 text-xs mt-3 text-center">
+          Copyright &copy; 2025 Dallas Sports Collective. All Rights Reserved.
+        </p>
+      </footer>
 
       {/* Sign-in Waiver Modal */}
       {state === 'waiver' && (
