@@ -74,14 +74,7 @@ export function parseClaudeResponse(responseText: string): ParseResult {
     }
 
     const parsed = JSON.parse(jsonStr)
-
-    // Debug: log what Claude actually returned
-    console.log('Claude raw response:', JSON.stringify(parsed, null, 2))
-
     const validated = ParseResultSchema.parse(parsed)
-
-    // Debug: log validated result
-    console.log('Validated data.query:', validated.data.query)
 
     // Build the result object explicitly
     const result: ParseResult = {
