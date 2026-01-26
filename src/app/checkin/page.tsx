@@ -305,27 +305,29 @@ export default function CheckinPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative">
-      {/* Full-screen Background Image */}
-      <div className="absolute inset-0">
-        <Image
-          src="/checkin-bg-flip.jpg"
-          alt="Gym"
-          fill
-          className="object-cover"
-          priority
-        />
-      </div>
+    <div className="min-h-screen flex flex-col bg-white p-5">
+      {/* Inset container for background image */}
+      <div className="flex-1 flex flex-col relative rounded-lg overflow-hidden">
+        {/* Full-screen Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/checkin-bg-flip.jpg"
+            alt="Gym"
+            fill
+            className="object-cover"
+            priority
+          />
+        </div>
 
-      {/* Logo Block - Top Left */}
-      <div className="absolute top-6 left-6 z-20">
-        <Image
-          src="/logo-block.png"
-          alt="DSC"
-          width={60}
-          height={60}
-        />
-      </div>
+        {/* Logo Block - Top Left */}
+        <div className="absolute top-6 left-6 z-20">
+          <Image
+            src="/logo-block.png"
+            alt="DSC"
+            width={60}
+            height={60}
+          />
+        </div>
 
       {/* Main Content */}
       <main className="flex-1 relative z-10">
@@ -615,14 +617,19 @@ export default function CheckinPage() {
             </div>
           </div>
         )}
-      </main>
 
-      {/* Bottom Section */}
-      <footer className="relative z-10 bg-white py-6 px-8">
-        <p className="text-black text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase">
-          Unlock Your Peak Performance
-        </p>
-        <p className="text-gray-500 text-xs mt-3 text-center">
+        {/* Bottom Tagline - inside the image area */}
+        <div className="absolute bottom-6 left-0 right-0 z-10">
+          <p className="text-white text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase drop-shadow-lg">
+            Unlock Your Peak Performance
+          </p>
+        </div>
+      </main>
+      </div>
+
+      {/* Footer - outside the inset image */}
+      <footer className="bg-white py-4 px-8">
+        <p className="text-gray-500 text-xs text-center">
           Copyright &copy; 2025 Dallas Sports Collective. All Rights Reserved.
         </p>
       </footer>
