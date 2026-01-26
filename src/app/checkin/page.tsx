@@ -306,6 +306,16 @@ export default function CheckinPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white p-5">
+      {/* Logo Block - Top Left corner of image (overlapping) */}
+      <div className="absolute top-0 left-0 z-20">
+        <Image
+          src="/logo-block.png"
+          alt="DSC"
+          width={80}
+          height={80}
+        />
+      </div>
+
       {/* Inset container for background image */}
       <div className="flex-1 flex flex-col relative rounded-lg overflow-hidden">
         {/* Full-screen Background Image */}
@@ -319,16 +329,6 @@ export default function CheckinPage() {
           />
         </div>
 
-        {/* Logo Block - Top Left */}
-        <div className="absolute top-6 left-6 z-20">
-          <Image
-            src="/logo-block.png"
-            alt="DSC"
-            width={60}
-            height={60}
-          />
-        </div>
-
       {/* Main Content */}
       <main className="flex-1 relative z-10">
 
@@ -339,8 +339,8 @@ export default function CheckinPage() {
               onClick={() => setView('register')}
               className="group flex items-center gap-3 mb-4 text-left"
             >
-              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
-                NEW ATHLETE REGISTRATION
+              <span className="text-white text-[64px] font-extrabold tracking-tight drop-shadow-lg leading-[1.1]" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+                NEW ATHLETE<br />REGISTRATION
               </span>
               <span className="text-white text-5xl font-light opacity-80 group-hover:translate-x-2 transition-transform">&#9735;</span>
             </button>
@@ -618,18 +618,15 @@ export default function CheckinPage() {
           </div>
         )}
 
-        {/* Bottom Tagline - inside the image area */}
-        <div className="absolute bottom-6 left-0 right-0 z-10">
-          <p className="text-white text-center text-lg md:text-xl font-light tracking-[0.3em] uppercase drop-shadow-lg">
-            Unlock Your Peak Performance
-          </p>
-        </div>
       </main>
       </div>
 
-      {/* Footer - outside the inset image */}
-      <footer className="bg-white py-4 px-8">
-        <p className="text-gray-500 text-xs text-center">
+      {/* Footer - below the inset image */}
+      <footer className="bg-white pt-4 pb-2">
+        <p className="text-black text-[48px] font-medium tracking-[0.4em] uppercase" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif' }}>
+          Unlock Your Peak Performance
+        </p>
+        <p className="text-gray-500 text-xs mt-2">
           Copyright &copy; 2025 Dallas Sports Collective. All Rights Reserved.
         </p>
       </footer>
