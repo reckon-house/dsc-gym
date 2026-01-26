@@ -6,7 +6,7 @@ import { hashPassword } from '@/lib/auth'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { firstName, lastName, email, password, legalName } = body
+    const { firstName, lastName, email, phone, password, legalName } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json(
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.toLowerCase().trim(),
+        phone: phone?.trim() || null,
         passwordHash,
         trainerId: null, // No trainer assigned yet
       },

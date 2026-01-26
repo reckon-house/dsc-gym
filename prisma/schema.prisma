@@ -32,6 +32,7 @@ model Athlete {
   firstName    String
   lastName     String
   email        String    @unique
+  phone        String?
   passwordHash String?
   address      String?
   trainerId    String?

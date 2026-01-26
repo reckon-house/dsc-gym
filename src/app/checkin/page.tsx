@@ -64,19 +64,22 @@ export default function CheckinPage() {
   const waiverScrollRef = useRef<HTMLDivElement>(null)
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false)
 
-  // Register state
+  // Register state - conversational flow
   const [registerState, setRegisterState] = useState<RegisterState>('input')
   const [registerError, setRegisterError] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [registerEmail, setRegisterEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [registerInput, setRegisterInput] = useState('')
+  const [parsedRegistration, setParsedRegistration] = useState<{
+    firstName: string
+    lastName: string
+    email: string
+    phone?: string
+  } | null>(null)
   const [registerLegalName, setRegisterLegalName] = useState('')
   const [registerWaiverAgreed, setRegisterWaiverAgreed] = useState(false)
   const registerWaiverScrollRef = useRef<HTMLDivElement>(null)
   const [registerHasScrolledToBottom, setRegisterHasScrolledToBottom] = useState(false)
   const [showWaiver, setShowWaiver] = useState(false)
+  const [isParsing, setIsParsing] = useState(false)
 
   // Auto-reset after success/error for sign-in
   useEffect(() => {
@@ -99,11 +102,8 @@ export default function CheckinPage() {
     if (registerState === 'success') {
       const timer = setTimeout(() => {
         setRegisterState('input')
-        setFirstName('')
-        setLastName('')
-        setRegisterEmail('')
-        setPassword('')
-        setConfirmPassword('')
+        setRegisterInput('')
+        setParsedRegistration(null)
         setRegisterLegalName('')
         setRegisterWaiverAgreed(false)
         setRegisterHasScrolledToBottom(false)
@@ -241,27 +241,40 @@ export default function CheckinPage() {
     setHasScrolledToBottom(false)
   }
 
-  // Register handlers
-  async function handleRegister(e: React.FormEvent) {
+  // Register handlers - parse free-form input
+  async function handleParseRegistration(e: React.FormEvent) {
     e.preventDefault()
+    if (!registerInput.trim()) return
 
-    // Validate
-    if (!firstName.trim() || !lastName.trim()) {
-      setRegisterError('First and last name are required')
-      return
+    setIsParsing(true)
+    setRegisterError('')
+
+    try {
+      const res = await fetch('/api/athletes/parse-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: registerInput.trim() }),
+      })
+
+      const result = await res.json()
+
+      if (!result.success) {
+        setRegisterError(result.error || 'Could not understand that. Please include your name, email, and phone number.')
+        return
+      }
+
+      // Store parsed data and show waiver
+      setParsedRegistration(result.parsed)
+      setShowWaiver(true)
+    } catch {
+      setRegisterError('An error occurred. Please try again.')
+    } finally {
+      setIsParsing(false)
     }
-    if (!registerEmail.trim()) {
-      setRegisterError('Email is required')
-      return
-    }
-    if (!password || password.length < 6) {
-      setRegisterError('Password must be at least 6 characters')
-      return
-    }
-    if (password !== confirmPassword) {
-      setRegisterError('Passwords do not match')
-      return
-    }
+  }
+
+  async function handleRegister() {
+    if (!parsedRegistration) return
     if (!registerWaiverAgreed || !registerLegalName.trim()) {
       setRegisterError('You must agree to the waiver and enter your legal name')
       return
@@ -275,10 +288,11 @@ export default function CheckinPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: registerEmail.trim(),
-          password,
+          firstName: parsedRegistration.firstName,
+          lastName: parsedRegistration.lastName,
+          email: parsedRegistration.email,
+          phone: parsedRegistration.phone,
+          password: 'temp123456', // Temporary password - they can reset later
           legalName: registerLegalName.trim(),
         }),
       })
@@ -302,6 +316,8 @@ export default function CheckinPage() {
     setRegisterState('input')
     setRegisterError('')
     setShowWaiver(false)
+    setParsedRegistration(null)
+    setRegisterInput('')
   }
 
   return (
@@ -358,7 +374,7 @@ export default function CheckinPage() {
           </div>
         )}
 
-        {/* REGISTER VIEW */}
+        {/* REGISTER VIEW - Conversational Style */}
         {view === 'register' && registerState === 'input' && !showWaiver && (
           <div className="absolute left-[clamp(20px,10vw,150px)] bottom-[clamp(40px,10vw,150px)] right-[clamp(20px,10vw,150px)] max-w-2xl">
             <button
@@ -371,57 +387,33 @@ export default function CheckinPage() {
               <span className="text-white font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform" style={{ fontSize: 'clamp(20px, 3vw, 32px)' }}>&#9735;</span>
             </button>
 
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl border-2 border-blue-400">
               <p className="font-bold text-sm md:text-base mb-4 text-black">
                 WELCOME! THIS IS THE DALLAS SPORT COLLECTIVE AI POWERED GYM APP. LET&apos;S GET A LITTLE INFO FROM YOU BEFORE YOU JOIN.
               </p>
 
-              <form onSubmit={(e) => { e.preventDefault(); setRegisterError(''); setShowWaiver(true); }} className="space-y-4">
-                <div className="flex gap-2">
+              <form onSubmit={handleParseRegistration} className="space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-gray-600 text-sm mb-2">Type your full name, email address and phone number:</p>
                   <input
                     type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="FIRST NAME"
-                    className="flex-1 px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
-                  />
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="LAST NAME"
-                    className="flex-1 px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
+                    value={registerInput}
+                    onChange={(e) => setRegisterInput(e.target.value)}
+                    placeholder="Justin Jefferson, jjefferson@gmail.com, 214-697-4578"
+                    className="w-full px-4 py-3 text-base bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-gray-400"
+                    autoFocus
+                    disabled={isParsing}
                   />
                 </div>
-                <input
-                  type="email"
-                  value={registerEmail}
-                  onChange={(e) => setRegisterEmail(e.target.value)}
-                  placeholder="EMAIL"
-                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="PASSWORD"
-                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
-                />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="CONFIRM PASSWORD"
-                  className="w-full px-4 py-3 text-base font-medium text-center bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black placeholder:text-gray-400"
-                />
                 {registerError && (
                   <p className="text-red-500 text-sm text-center">{registerError}</p>
                 )}
                 <button
                   type="submit"
-                  className="w-full px-6 py-3 text-base font-bold bg-black text-white rounded-lg hover:bg-gray-900 transition-colors"
+                  disabled={isParsing || !registerInput.trim()}
+                  className="w-full px-6 py-3 text-base font-bold bg-black text-white rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  CONTINUE TO WAIVER
+                  {isParsing ? 'PROCESSING...' : 'ENTER / REGISTER'}
                 </button>
               </form>
             </div>
@@ -439,12 +431,12 @@ export default function CheckinPage() {
         )}
 
         {/* Register Success */}
-        {registerState === 'success' && (
+        {registerState === 'success' && parsedRegistration && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center bg-black/80 backdrop-blur rounded-2xl p-8 space-y-4 max-w-md">
               <div className="text-6xl text-green-400">&#10003;</div>
               <h2 className="text-3xl font-black text-white">
-                Welcome, {firstName}!
+                Welcome, {parsedRegistration.firstName}!
               </h2>
               <div className="bg-green-500/20 rounded-lg p-4">
                 <p className="text-xl text-white">Registration complete!</p>
