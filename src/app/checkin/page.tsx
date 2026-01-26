@@ -324,11 +324,21 @@ export default function CheckinPage() {
         {/* Background Image */}
         <div className="absolute inset-0">
           <Image
-            src="/checkin-bg.jpg"
+            src="/checkin-bg-flip.jpg"
             alt="Gym"
             fill
-            className="object-cover grayscale"
+            className="object-cover"
             priority
+          />
+        </div>
+
+        {/* Logo Block - Top Left */}
+        <div className="absolute top-4 left-4 z-20">
+          <Image
+            src="/logo-block.png"
+            alt="DSC"
+            width={60}
+            height={60}
           />
         </div>
 
