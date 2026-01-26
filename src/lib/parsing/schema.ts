@@ -83,46 +83,54 @@ export function parseClaudeResponse(responseText: string): ParseResult {
     // Debug: log validated result
     console.log('Validated data.query:', validated.data.query)
 
-    return {
+    // Build the result object explicitly
+    const result: ParseResult = {
       action: validated.action as ParsedAction,
       confidence: validated.confidence,
-      data: {
-        session: validated.data.session
-          ? {
-              athleteId: validated.data.session.athleteId ?? undefined,
-              athleteName: validated.data.session.athleteName,
-              isNewAthlete: validated.data.session.isNewAthlete,
-              scheduledAt: validated.data.session.scheduledAt,
-              duration: validated.data.session.duration,
-              recurrencePattern: validated.data.session.recurrencePattern ?? undefined,
-              recurrenceEndDate: validated.data.session.recurrenceEndDate ?? undefined,
-            }
-          : undefined,
-        athlete: validated.data.athlete
-          ? {
-              id: validated.data.athlete.id ?? undefined,
-              firstName: validated.data.athlete.firstName,
-              lastName: validated.data.athlete.lastName,
-              email: validated.data.athlete.email,
-            }
-          : undefined,
-        query: validated.data.query
-          ? {
-              queryType: validated.data.query.queryType as import('@/types').QueryType,
-              filters: {
-                athleteId: validated.data.query.filters?.athleteId ?? undefined,
-                athleteName: validated.data.query.filters?.athleteName ?? undefined,
-                dateFrom: validated.data.query.filters?.dateFrom ?? undefined,
-                dateTo: validated.data.query.filters?.dateTo ?? undefined,
-                status: validated.data.query.filters?.status,
-              },
-              description: validated.data.query.description,
-            }
-          : undefined,
-      },
+      data: {},
       clarificationNeeded: validated.clarificationNeeded ?? undefined,
       humanReadableSummary: validated.humanReadableSummary,
     }
+
+    // Add session data if present
+    if (validated.data.session) {
+      result.data.session = {
+        athleteId: validated.data.session.athleteId ?? undefined,
+        athleteName: validated.data.session.athleteName,
+        isNewAthlete: validated.data.session.isNewAthlete,
+        scheduledAt: validated.data.session.scheduledAt,
+        duration: validated.data.session.duration,
+        recurrencePattern: validated.data.session.recurrencePattern ?? undefined,
+        recurrenceEndDate: validated.data.session.recurrenceEndDate ?? undefined,
+      }
+    }
+
+    // Add athlete data if present
+    if (validated.data.athlete) {
+      result.data.athlete = {
+        id: validated.data.athlete.id ?? undefined,
+        firstName: validated.data.athlete.firstName,
+        lastName: validated.data.athlete.lastName,
+        email: validated.data.athlete.email,
+      }
+    }
+
+    // Add query data if present
+    if (validated.data.query) {
+      result.data.query = {
+        queryType: validated.data.query.queryType as import('@/types').QueryType,
+        filters: {
+          athleteId: validated.data.query.filters?.athleteId ?? undefined,
+          athleteName: validated.data.query.filters?.athleteName ?? undefined,
+          dateFrom: validated.data.query.filters?.dateFrom ?? undefined,
+          dateTo: validated.data.query.filters?.dateTo ?? undefined,
+          status: validated.data.query.filters?.status,
+        },
+        description: validated.data.query.description,
+      }
+    }
+
+    return result
   } catch (error) {
     console.error('Failed to parse Claude response:', error)
     console.error('Raw response:', responseText)
