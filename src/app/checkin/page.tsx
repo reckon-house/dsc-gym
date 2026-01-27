@@ -381,13 +381,13 @@ export default function CheckinPage() {
               onClick={() => setView('landing')}
               className="group flex items-center gap-2 md:gap-3 mb-4 md:mb-8 text-left"
             >
-              <span className="text-white font-extrabold tracking-tight drop-shadow-lg" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(24px, 4vw, 48px)' }}>
-                JOIN THE DALLAS SPORT COLLECTIVE
+              <span className="text-white font-extrabold tracking-tight drop-shadow-lg leading-none" style={{ fontFamily: 'var(--font-avenir), system-ui, sans-serif', fontSize: 'clamp(24px, 4vw, 48px)' }}>
+                JOIN THE DALLAS<br />SPORT COLLECTIVE
               </span>
               <span className="text-white font-light opacity-80 rotate-180 group-hover:-translate-x-2 transition-transform" style={{ fontSize: 'clamp(20px, 3vw, 32px)' }}>&#9735;</span>
             </button>
 
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl border-2 border-blue-400">
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-6 md:p-8 shadow-2xl">
               <p className="font-bold text-sm md:text-base mb-4 text-black">
                 WELCOME! THIS IS THE DALLAS SPORT COLLECTIVE AI POWERED GYM APP. LET&apos;S GET A LITTLE INFO FROM YOU BEFORE YOU JOIN.
               </p>
@@ -400,7 +400,7 @@ export default function CheckinPage() {
                     value={registerInput}
                     onChange={(e) => setRegisterInput(e.target.value)}
                     placeholder="Justin Jefferson, jjefferson@gmail.com, 214-697-4578"
-                    className="w-full px-4 py-3 text-base bg-white border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-gray-400"
+                    className="w-full px-4 py-3 text-base text-black bg-white border-0 rounded-lg focus:outline-none placeholder:text-gray-400"
                     autoFocus
                     disabled={isParsing}
                   />
