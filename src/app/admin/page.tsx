@@ -55,6 +55,14 @@ interface WalkIn {
   checkInTime: string
 }
 
+interface UnassignedAthlete {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  createdAt: string
+}
+
 type CalendarView = 'day' | 'week' | 'month'
 
 export default function AdminDashboard() {
@@ -63,6 +71,8 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<{ name: string } | null>(null)
   const [walkIns, setWalkIns] = useState<WalkIn[]>([])
   const [assigningWalkIn, setAssigningWalkIn] = useState<string | null>(null)
+  const [unassignedAthletes, setUnassignedAthletes] = useState<UnassignedAthlete[]>([])
+  const [assigningAthlete, setAssigningAthlete] = useState<string | null>(null)
   const router = useRouter()
 
   // Command input state
@@ -83,6 +93,7 @@ export default function AdminDashboard() {
     fetchUser()
     fetchTrainers()
     fetchWalkIns()
+    fetchUnassignedAthletes()
     fetchSessions()
   }, [])
 
@@ -112,6 +123,34 @@ export default function AdminDashboard() {
     const data = await res.json()
     if (data.success) {
       setWalkIns(data.data)
+    }
+  }
+
+  async function fetchUnassignedAthletes() {
+    const res = await fetch('/api/athletes?unassigned=true')
+    const data = await res.json()
+    if (data.success) {
+      setUnassignedAthletes(data.data)
+    }
+  }
+
+  async function assignAthlete(athleteId: string, trainerId: string) {
+    setAssigningAthlete(athleteId)
+    try {
+      const res = await fetch(`/api/athletes/${athleteId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainerId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        fetchUnassignedAthletes()
+        fetchTrainers()
+      }
+    } catch (error) {
+      console.error('Error assigning athlete:', error)
+    } finally {
+      setAssigningAthlete(null)
     }
   }
 
@@ -195,6 +234,7 @@ export default function AdminDashboard() {
         // Refresh data
         fetchTrainers()
         fetchWalkIns()
+        fetchUnassignedAthletes()
 
         // Check if a session was created and adjust calendar view
         // The results array contains created/updated records
@@ -317,6 +357,38 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Unassigned Athletes Alert */}
+      {unassignedAthletes.length > 0 && (
+        <div className="bg-blue-600 text-white p-3 md:p-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="font-bold mb-2 text-sm md:text-base">NEW REGISTRATIONS ({unassignedAthletes.length})</div>
+            <div className="space-y-2">
+              {unassignedAthletes.map((athlete) => (
+                <div key={athlete.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/10 rounded p-2 gap-2">
+                  <span className="text-sm md:text-base">
+                    {athlete.firstName} {athlete.lastName} - {athlete.email}
+                    <span className="ml-2 text-xs opacity-75">
+                      {new Date(athlete.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </span>
+                  </span>
+                  <select
+                    className="bg-white text-black rounded px-2 py-1 text-xs md:text-sm"
+                    defaultValue=""
+                    onChange={(e) => e.target.value && assignAthlete(athlete.id, e.target.value)}
+                    disabled={assigningAthlete === athlete.id}
+                  >
+                    <option value="" disabled>Assign trainer...</option>
+                    {trainers.map((t) => (
+                      <option key={t.id} value={t.id}>{t.user.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-4xl mx-auto py-4 md:py-8 px-3 md:px-4">
         {/* Command Input */}
         <div className="mb-4 md:mb-8">
@@ -331,7 +403,7 @@ export default function AdminDashboard() {
                 }
               }}
               placeholder="Type a command..."
-              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-black rounded-lg text-sm md:text-lg focus:outline-none focus:ring-2 focus:ring-black"
+              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-black rounded-lg text-sm md:text-lg text-black placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-black"
               disabled={loading}
             />
             <button
@@ -357,8 +429,8 @@ export default function AdminDashboard() {
             onClick={() => setCalendarOpen(!calendarOpen)}
             className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-xl md:text-3xl font-black tracking-tight">CALENDAR</span>
-            <span className="text-xl md:text-3xl font-light">{calendarOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight text-black">CALENDAR</span>
+            <span className="text-xl md:text-3xl font-light text-black">{calendarOpen ? '−' : '+'}</span>
           </button>
 
           {calendarOpen && (
@@ -381,16 +453,16 @@ export default function AdminDashboard() {
                   ))}
                 </div>
                 <div className="flex items-center gap-2 md:gap-4">
-                  <button onClick={() => navigateDate('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base">
+                  <button onClick={() => navigateDate('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base text-black">
                     &larr;
                   </button>
-                  <span className="font-medium min-w-[120px] md:min-w-[200px] text-center text-xs md:text-base">{formatDateHeader()}</span>
-                  <button onClick={() => navigateDate('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base">
+                  <span className="font-medium min-w-[120px] md:min-w-[200px] text-center text-xs md:text-base text-black">{formatDateHeader()}</span>
+                  <button onClick={() => navigateDate('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base text-black">
                     &rarr;
                   </button>
                   <button
                     onClick={() => setCurrentDate(new Date())}
-                    className="px-2 md:px-3 py-1 text-xs md:text-sm bg-gray-100 rounded hover:bg-gray-200"
+                    className="px-2 md:px-3 py-1 text-xs md:text-sm bg-gray-100 text-black rounded hover:bg-gray-200"
                   >
                     Today
                   </button>
@@ -406,7 +478,7 @@ export default function AdminDashboard() {
                     .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
                     .map(([date, daySessions]) => (
                       <div key={date} className="border rounded-lg overflow-hidden">
-                        <div className="bg-gray-100 px-3 md:px-4 py-2 font-medium text-sm md:text-base">
+                        <div className="bg-gray-100 px-3 md:px-4 py-2 font-medium text-sm md:text-base text-black">
                           {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                         </div>
                         <div className="divide-y">
@@ -415,17 +487,17 @@ export default function AdminDashboard() {
                             .map((session) => (
                               <div key={session.id} className="px-3 md:px-4 py-2 md:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4">
                                 <div className="flex flex-wrap items-center gap-2 md:gap-4">
-                                  <span className="font-mono text-xs md:text-sm w-16 md:w-20">{formatTime(session.scheduledAt)}</span>
-                                  <span className="font-medium text-sm md:text-base">
+                                  <span className="font-mono text-xs md:text-sm w-16 md:w-20 text-black">{formatTime(session.scheduledAt)}</span>
+                                  <span className="font-medium text-sm md:text-base text-black">
                                     {session.athlete.firstName} {session.athlete.lastName}
                                   </span>
-                                  <span className="text-gray-500 text-xs md:text-sm">
+                                  <span className="text-gray-700 text-xs md:text-sm">
                                     with {session.trainer.user.name}
                                   </span>
                                 </div>
                                 <span className={`text-xs md:text-sm font-medium ${
                                   session.cancelled ? 'text-red-600' :
-                                  session.completed ? 'text-green-600' : 'text-gray-400'
+                                  session.completed ? 'text-green-600' : 'text-gray-600'
                                 }`}>
                                   {session.cancelled ? 'Cancelled' : session.completed ? 'Done' : 'Scheduled'}
                                 </span>
@@ -446,8 +518,8 @@ export default function AdminDashboard() {
             onClick={() => setTrainersOpen(!trainersOpen)}
             className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-xl md:text-3xl font-black tracking-tight">TRAINERS</span>
-            <span className="text-xl md:text-3xl font-light">{trainersOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight text-black">TRAINERS</span>
+            <span className="text-xl md:text-3xl font-light text-black">{trainersOpen ? '−' : '+'}</span>
           </button>
 
           {trainersOpen && (
@@ -457,17 +529,17 @@ export default function AdminDashboard() {
                   <div key={trainer.id} className="border rounded-lg p-3 md:p-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="font-bold text-base md:text-lg">{trainer.user.name}</div>
-                        <div className="text-gray-500 text-xs md:text-sm">{trainer.user.email}</div>
+                        <div className="font-bold text-base md:text-lg text-black">{trainer.user.name}</div>
+                        <div className="text-gray-700 text-xs md:text-sm">{trainer.user.email}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl md:text-2xl font-bold">{trainer.totalAthletes}</div>
-                        <div className="text-gray-500 text-[10px] md:text-xs">athletes</div>
+                        <div className="text-xl md:text-2xl font-bold text-black">{trainer.totalAthletes}</div>
+                        <div className="text-gray-700 text-[10px] md:text-xs">athletes</div>
                       </div>
                     </div>
                     {trainer.todaySessions.length > 0 && (
                       <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t">
-                        <div className="text-xs md:text-sm text-gray-500 mb-2">Today&apos;s Sessions</div>
+                        <div className="text-xs md:text-sm text-gray-700 mb-2">Today&apos;s Sessions</div>
                         <div className="flex flex-wrap gap-1 md:gap-2">
                           {trainer.todaySessions.map((session) => (
                             <span
@@ -495,21 +567,21 @@ export default function AdminDashboard() {
             onClick={() => setAthletesOpen(!athletesOpen)}
             className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
           >
-            <span className="text-xl md:text-3xl font-black tracking-tight">ATHLETES</span>
-            <span className="text-xl md:text-3xl font-light">{athletesOpen ? '−' : '+'}</span>
+            <span className="text-xl md:text-3xl font-black tracking-tight text-black">ATHLETES</span>
+            <span className="text-xl md:text-3xl font-light text-black">{athletesOpen ? '−' : '+'}</span>
           </button>
 
           {athletesOpen && (
             <div className="px-3 md:px-4 pb-4 md:pb-6">
-              <div className="mb-3 md:mb-4 text-gray-500 text-sm md:text-base">{allAthletes.length} athletes total</div>
+              <div className="mb-3 md:mb-4 text-gray-700 text-sm md:text-base">{allAthletes.length} athletes total</div>
               <div className="space-y-2">
                 {allAthletes.map((athlete) => (
                   <div key={athlete.id} className="border rounded-lg p-2 md:p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
                     <div>
-                      <div className="font-medium text-sm md:text-base">{athlete.firstName} {athlete.lastName}</div>
-                      <div className="text-gray-500 text-xs md:text-sm">{athlete.email}</div>
+                      <div className="font-medium text-sm md:text-base text-black">{athlete.firstName} {athlete.lastName}</div>
+                      <div className="text-gray-700 text-xs md:text-sm">{athlete.email}</div>
                     </div>
-                    <div className="text-gray-500 text-xs md:text-sm">
+                    <div className="text-gray-700 text-xs md:text-sm">
                       {athlete.trainerName}
                     </div>
                   </div>

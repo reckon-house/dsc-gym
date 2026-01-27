@@ -245,7 +245,7 @@ export default function TrainerDashboard() {
         {/* Natural Language Input */}
         <div className="bg-white rounded-lg shadow p-4 md:p-6 mb-4 md:mb-6">
           <h2 className="text-base md:text-lg font-semibold mb-2">Ask or Schedule</h2>
-          <p className="text-xs md:text-sm text-gray-500 mb-3">
+          <p className="text-xs md:text-sm text-gray-700 mb-3">
             Try: &quot;Marcus tomorrow at 3pm&quot; &bull; &quot;Show my schedule this week&quot;
           </p>
           <textarea
@@ -258,7 +258,7 @@ export default function TrainerDashboard() {
               }
             }}
             placeholder="Type your request..."
-            className="w-full p-2 md:p-3 border rounded-lg focus:ring-2 focus:ring-black focus:border-black text-sm md:text-base"
+            className="w-full p-2 md:p-3 border rounded-lg text-black placeholder:text-gray-700 focus:ring-2 focus:ring-black focus:border-black text-sm md:text-base"
             rows={2}
           />
           <div className="mt-3 flex flex-wrap items-center gap-2 md:gap-3">
@@ -313,7 +313,7 @@ export default function TrainerDashboard() {
                     </button>
                     <div className="min-w-0">
                       <h3 className="font-semibold text-sm md:text-base truncate">{qr.message}</h3>
-                      <span className="text-xs md:text-sm text-gray-500">
+                      <span className="text-xs md:text-sm text-gray-700">
                         {qr.type === 'sessions' && qr.data.sessions && `${qr.data.sessions.length} session(s)`}
                         {qr.type === 'athletes' && qr.data.athletes && `${qr.data.athletes.length} athlete(s)`}
                         {qr.type === 'checkIns' && qr.data.checkIns && `${qr.data.checkIns.length} check-in(s)`}
@@ -327,7 +327,7 @@ export default function TrainerDashboard() {
                   </div>
                   <button
                     onClick={() => removeQueryResult(qr.id)}
-                    className="w-7 h-7 md:w-8 md:h-8 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-gray-400 hover:text-red-600 text-lg md:text-xl"
+                    className="w-7 h-7 md:w-8 md:h-8 flex-shrink-0 flex items-center justify-center rounded hover:bg-red-100 text-gray-600 hover:text-red-600 text-lg md:text-xl"
                     title="Close"
                   >
                     ×
@@ -341,7 +341,7 @@ export default function TrainerDashboard() {
                     {qr.type === 'sessions' && qr.data.sessions && (
                       <div className="overflow-x-auto">
                         {qr.data.sessions.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4 text-sm md:text-base">No sessions found</p>
+                          <p className="text-gray-700 text-center py-4 text-sm md:text-base">No sessions found</p>
                         ) : (
                           <table className="w-full text-left text-xs md:text-sm">
                             <thead className="bg-gray-50">
@@ -363,7 +363,7 @@ export default function TrainerDashboard() {
                                     {new Date(s.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                   </td>
                                   <td className="px-2 md:px-4 py-2 md:py-3 font-medium">{s.athleteName}</td>
-                                  <td className="px-2 md:px-4 py-2 md:py-3 text-gray-500 hidden sm:table-cell">{s.duration} min</td>
+                                  <td className="px-2 md:px-4 py-2 md:py-3 text-gray-700 hidden sm:table-cell">{s.duration} min</td>
                                   <td className="px-2 md:px-4 py-2 md:py-3">
                                     {s.cancelled ? (
                                       <span className="text-red-600">X</span>
@@ -385,7 +385,7 @@ export default function TrainerDashboard() {
                     {qr.type === 'athletes' && qr.data.athletes && (
                       <div className="overflow-x-auto">
                         {qr.data.athletes.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4 text-sm md:text-base">No athletes found</p>
+                          <p className="text-gray-700 text-center py-4 text-sm md:text-base">No athletes found</p>
                         ) : (
                           <table className="w-full text-left text-xs md:text-sm">
                             <thead className="bg-gray-50">
@@ -398,7 +398,7 @@ export default function TrainerDashboard() {
                               {qr.data.athletes.map((a) => (
                                 <tr key={a.id} className="hover:bg-gray-50">
                                   <td className="px-2 md:px-4 py-2 md:py-3 font-medium">{a.firstName} {a.lastName}</td>
-                                  <td className="px-2 md:px-4 py-2 md:py-3 text-gray-500 truncate max-w-[150px] md:max-w-none">{a.email}</td>
+                                  <td className="px-2 md:px-4 py-2 md:py-3 text-gray-700 truncate max-w-[150px] md:max-w-none">{a.email}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -419,19 +419,19 @@ export default function TrainerDashboard() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
                         <div className="text-center p-3 md:p-4 bg-gray-50 rounded">
                           <div className="text-2xl md:text-3xl font-bold">{qr.data.summary.totalAthletes}</div>
-                          <div className="text-xs md:text-sm text-gray-500">Athletes</div>
+                          <div className="text-xs md:text-sm text-gray-700">Athletes</div>
                         </div>
                         <div className="text-center p-3 md:p-4 bg-gray-50 rounded">
                           <div className="text-2xl md:text-3xl font-bold text-blue-600">{qr.data.summary.upcomingSessions}</div>
-                          <div className="text-xs md:text-sm text-gray-500">Upcoming</div>
+                          <div className="text-xs md:text-sm text-gray-700">Upcoming</div>
                         </div>
                         <div className="text-center p-3 md:p-4 bg-gray-50 rounded">
                           <div className="text-2xl md:text-3xl font-bold text-green-600">{qr.data.summary.completedSessions}</div>
-                          <div className="text-xs md:text-sm text-gray-500">Completed</div>
+                          <div className="text-xs md:text-sm text-gray-700">Completed</div>
                         </div>
                         <div className="text-center p-3 md:p-4 bg-gray-50 rounded">
                           <div className="text-2xl md:text-3xl font-bold">{qr.data.summary.totalSessions}</div>
-                          <div className="text-xs md:text-sm text-gray-500">Total</div>
+                          <div className="text-xs md:text-sm text-gray-700">Total</div>
                         </div>
                       </div>
                     )}
@@ -440,7 +440,7 @@ export default function TrainerDashboard() {
                     {qr.type === 'checkIns' && qr.data.checkIns && (
                       <div className="overflow-x-auto">
                         {qr.data.checkIns.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4 text-sm md:text-base">No check-ins found</p>
+                          <p className="text-gray-700 text-center py-4 text-sm md:text-base">No check-ins found</p>
                         ) : (
                           <table className="w-full text-left text-xs md:text-sm">
                             <thead className="bg-gray-50">
@@ -479,21 +479,21 @@ export default function TrainerDashboard() {
                         <div className="grid grid-cols-3 gap-2 md:gap-4 mb-4 md:mb-6">
                           <div className="text-center p-2 md:p-4 bg-gray-50 rounded">
                             <div className="text-xl md:text-3xl font-bold">{qr.data.attendanceReport.totalSessionsInPeriod}</div>
-                            <div className="text-[10px] md:text-sm text-gray-500">Total</div>
+                            <div className="text-[10px] md:text-sm text-gray-700">Total</div>
                           </div>
                           <div className="text-center p-2 md:p-4 bg-green-50 rounded">
                             <div className="text-xl md:text-3xl font-bold text-green-600">{qr.data.attendanceReport.checkedInCount}</div>
-                            <div className="text-[10px] md:text-sm text-gray-500">In</div>
+                            <div className="text-[10px] md:text-sm text-gray-700">In</div>
                           </div>
                           <div className="text-center p-2 md:p-4 bg-red-50 rounded">
                             <div className="text-xl md:text-3xl font-bold text-red-600">{qr.data.attendanceReport.missedCount}</div>
-                            <div className="text-[10px] md:text-sm text-gray-500">Missed</div>
+                            <div className="text-[10px] md:text-sm text-gray-700">Missed</div>
                           </div>
                         </div>
 
                         {/* Athletes with missed sessions */}
                         {qr.data.attendanceReport.athletesWithMissedSessions.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4 text-sm md:text-base">All athletes checked in!</p>
+                          <p className="text-gray-700 text-center py-4 text-sm md:text-base">All athletes checked in!</p>
                         ) : (
                           <div className="overflow-x-auto">
                             <h4 className="font-medium mb-2 text-sm md:text-base">Missed check-ins:</h4>
@@ -543,7 +543,7 @@ export default function TrainerDashboard() {
           <div className="md:col-span-2 bg-white rounded-lg shadow p-4 md:p-6">
             <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Today&apos;s Sessions</h2>
             {sessions.length === 0 ? (
-              <p className="text-gray-500 text-sm md:text-base">No sessions scheduled for today</p>
+              <p className="text-gray-700 text-sm md:text-base">No sessions scheduled for today</p>
             ) : (
               <ul className="space-y-2 md:space-y-3">
                 {sessions.map((session) => (
@@ -557,7 +557,7 @@ export default function TrainerDashboard() {
                       <span className="font-medium text-sm md:text-base">
                         {session.athlete.firstName} {session.athlete.lastName}
                       </span>
-                      <span className="text-gray-500 text-xs md:text-sm">
+                      <span className="text-gray-700 text-xs md:text-sm">
                         {new Date(session.scheduledAt).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -584,13 +584,13 @@ export default function TrainerDashboard() {
           <div className="bg-white rounded-lg shadow p-4 md:p-6">
             <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4">My Athletes ({athletes.length})</h2>
             {athletes.length === 0 ? (
-              <p className="text-gray-500 text-xs md:text-sm">No athletes yet. Try: &quot;Add athlete John Doe&quot;</p>
+              <p className="text-gray-700 text-xs md:text-sm">No athletes yet. Try: &quot;Add athlete John Doe&quot;</p>
             ) : (
               <ul className="space-y-2">
                 {athletes.map((athlete) => (
                   <li key={athlete.id} className="text-xs md:text-sm p-2 bg-gray-50 rounded">
                     <span className="font-medium">{athlete.firstName} {athlete.lastName}</span>
-                    <span className="text-gray-400 text-[10px] md:text-xs block truncate">{athlete.email}</span>
+                    <span className="text-gray-600 text-[10px] md:text-xs block truncate">{athlete.email}</span>
                   </li>
                 ))}
               </ul>

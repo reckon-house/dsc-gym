@@ -19,8 +19,12 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: Record<string, unknown> = {}
 
-    // Trainers can only see their own athletes
-    if (session.role === 'TRAINER') {
+    // Support unassigned filter (admin only)
+    const unassigned = searchParams.get('unassigned')
+    if (unassigned === 'true' && session.role === 'ADMIN') {
+      where.trainerId = null
+    } else if (session.role === 'TRAINER') {
+      // Trainers can only see their own athletes
       where.trainerId = session.trainerId
     } else if (trainerId) {
       where.trainerId = trainerId
