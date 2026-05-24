@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
 interface WalkIn {
@@ -105,8 +106,8 @@ export default function AdminHome() {
     <div className="min-h-screen bg-white flex flex-col">
       {/* Top — wordmark + user */}
       <header className="px-4 pt-6 pb-4 flex items-center justify-between">
-        <div className="flex items-baseline gap-3">
-          <span className="dsc-headline text-2xl md:text-3xl text-black">DSC</span>
+        <div className="flex items-center gap-3">
+          <Image src="/logo-mark.png" alt="DSC" width={44} height={44} priority />
           <span className="dsc-label text-black/40 hidden sm:inline">
             Dallas Sports Collective
           </span>

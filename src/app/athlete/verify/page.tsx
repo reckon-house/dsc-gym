@@ -47,16 +47,14 @@ function VerifyInner() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 py-5 flex items-center justify-between">
-        <Link href="/athlete" className="inline-flex items-center gap-2">
+        <Link href="/athlete" aria-label="DSC home" className="block">
           <Image
             src="/logo-mark.png"
             alt="DSC"
-            width={36}
-            height={36}
-            className="block"
+            width={40}
+            height={40}
             priority
           />
-          <span className="dsc-headline text-xl text-black">DSC</span>
         </Link>
       </header>
 

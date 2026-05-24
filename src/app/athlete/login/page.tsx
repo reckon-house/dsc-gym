@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 function LoginInner() {
   const router = useRouter()
@@ -40,8 +41,8 @@ function LoginInner() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 py-5 flex items-center justify-between">
-        <Link href="/athlete" className="dsc-headline text-2xl text-black">
-          DSC
+        <Link href="/athlete" aria-label="DSC home" className="block">
+          <Image src="/logo-mark.png" alt="DSC" width={40} height={40} priority />
         </Link>
         <Link
           href="/athlete/register"
