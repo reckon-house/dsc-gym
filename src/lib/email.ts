@@ -59,7 +59,7 @@ export function generateVerificationToken(): string {
 export function buildVerificationEmail(args: {
   firstName: string
   url: string
-  heroImageUrl?: string
+  logoUrl?: string
 }): { subject: string; text: string; html: string } {
   const subject = 'Confirm your DSC account'
 
@@ -77,7 +77,7 @@ This link expires in 24 hours. If you didn't sign up, ignore this email.
   const html = renderHtmlEmail({
     preview: 'Tap the button to activate your DSC account.',
     headerLabel: 'Dallas Sports Collective',
-    heroImageUrl: args.heroImageUrl,
+    logoUrl: args.logoUrl,
     headline: 'Welcome to DSC',
     intro: `Hi ${args.firstName} — you're one tap away from being set up. Confirm your email to activate your account.`,
     buttonLabel: 'Confirm my email',
@@ -93,7 +93,7 @@ This link expires in 24 hours. If you didn't sign up, ignore this email.
 interface EmailLayoutArgs {
   preview: string
   headerLabel: string
-  heroImageUrl?: string
+  logoUrl?: string
   headline: string
   intro: string
   buttonLabel: string
@@ -133,39 +133,29 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
         <td align="center" style="padding:32px 16px;">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
 
-            <!-- Brand bar -->
+            <!-- Brand bar — centered monogram + mono wordmark below -->
             <tr>
-              <td style="padding:0 8px 24px 8px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="font-family:${fontStack};font-weight:800;font-size:24px;letter-spacing:-0.02em;color:${ink};">
-                      DSC
-                    </td>
-                    <td align="right" style="font-family:'SFMono-Regular','Menlo','Monaco',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:${muted};">
-                      ${escapeHtml(args.headerLabel)}
-                    </td>
-                  </tr>
-                </table>
+              <td align="center" style="padding:8px 8px 28px 8px;">
+                ${args.logoUrl ? `
+                <img src="${escapeAttr(args.logoUrl)}"
+                     alt="DSC"
+                     width="64"
+                     height="64"
+                     style="display:block;width:64px;height:64px;margin:0 auto 12px auto;" />
+                ` : `
+                <div style="font-family:${fontStack};font-weight:800;font-size:32px;letter-spacing:-0.03em;color:${ink};margin-bottom:8px;">
+                  DSC
+                </div>
+                `}
+                <div style="font-family:'SFMono-Regular','Menlo','Monaco',monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${muted};">
+                  ${escapeHtml(args.headerLabel)}
+                </div>
               </td>
             </tr>
 
             <!-- Card -->
             <tr>
               <td style="background:${surface};border-radius:24px;padding:0;overflow:hidden;">
-
-                ${args.heroImageUrl ? `
-                <!-- Hero image -->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="line-height:0;font-size:0;">
-                      <img src="${escapeAttr(args.heroImageUrl)}"
-                           alt="Dallas Sports Collective"
-                           width="600"
-                           style="display:block;width:100%;max-width:600px;height:auto;border-top-left-radius:24px;border-top-right-radius:24px;" />
-                    </td>
-                  </tr>
-                </table>
-                ` : ''}
 
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>

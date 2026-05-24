@@ -88,15 +88,14 @@ export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin') ?? `http://${request.headers.get('host') ?? 'localhost:3000'}`
     const verificationUrl = `${origin}/athlete/verify?token=${token}`
 
-    // Hero image URL. Lets us swap to a CDN/optimized version via env var
-    // without changing code. Falls back to a public asset.
-    const heroImageUrl =
-      process.env.EMAIL_HERO_URL ?? `${origin}/checkin-bg.jpg`
+    // Brand logo for the email header. Env override lets us point at a CDN
+    // or pin to a specific deploy URL without code changes.
+    const logoUrl = process.env.EMAIL_LOGO_URL ?? `${origin}/logo-mark.png`
 
     const email_content = buildVerificationEmail({
       firstName: athlete.firstName,
       url: verificationUrl,
-      heroImageUrl,
+      logoUrl,
     })
     const emailResult = await sendEmail({
       to: normalizedEmail,
