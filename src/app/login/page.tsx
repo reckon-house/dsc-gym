@@ -43,6 +43,8 @@ export default function LoginPage() {
     }
   }
 
+  const isDev = process.env.NODE_ENV !== 'production'
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 py-5 flex items-center justify-between">
@@ -57,57 +59,72 @@ export default function LoginPage() {
         </Link>
       </header>
 
-      <div className="flex-1 flex items-center justify-center px-6">
-        <div className="w-full max-w-md">
-          <div className="dsc-label text-black/40 mb-2">Staff</div>
-          <h2 className="dsc-headline text-3xl md:text-4xl text-black mb-6">
-            Sign in
-          </h2>
+      <div className="flex-1 flex items-stretch px-4 pb-4">
+        <div
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
+          style={{
+            backgroundImage: 'url(/images/landing-page-bg.jpg)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            minHeight: '70vh',
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <label className="block">
-              <div className="dsc-label text-black/50 mb-1">Email</div>
+          <div className="relative p-6 pb-8 space-y-6">
+            <div className="dsc-enter">
+              <div className="dsc-label text-white/70 mb-2">Staff</div>
+              <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">
+                Sign in.
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-2 dsc-enter-delay-1">
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="you@dsc.com"
-                className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
+                autoComplete="email"
+                placeholder="Email"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
-            </label>
-            <label className="block">
-              <div className="dsc-label text-black/50 mb-1">Password</div>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
+                autoComplete="current-password"
+                placeholder="Password"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
-            </label>
 
-            {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-                {error}
-              </div>
-            )}
+              {error && (
+                <div className="rounded-2xl bg-red-500/20 border border-red-300/40 text-red-100 px-4 py-2 text-sm backdrop-blur">
+                  {error}
+                </div>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30"
-            >
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-14 border-2 border-white/80 text-white rounded-full dsc-headline text-lg hover:bg-white/10 transition-colors disabled:opacity-40 mt-3"
+              >
+                {loading ? 'SIGNING IN…' : 'SIGN IN'}
+              </button>
 
-          <div className="mt-8 pt-6 border-t border-black/10">
-            <div className="dsc-label text-black/40 mb-2">Test accounts</div>
-            <div className="font-mono text-xs text-black/60 space-y-1">
-              <div>admin@dsc.com · admin123</div>
-              <div>mike@dsc.com · trainer123</div>
-            </div>
+              {isDev && (
+                <div className="pt-4 border-t border-white/15 mt-4">
+                  <div className="dsc-label text-white/40 mb-2">
+                    Test accounts (dev only)
+                  </div>
+                  <div className="font-mono text-xs text-white/60 space-y-1">
+                    <div>admin@dsc.com · admin123</div>
+                    <div>mike@dsc.com · trainer123</div>
+                  </div>
+                </div>
+              )}
+            </form>
           </div>
         </div>
       </div>
