@@ -4,10 +4,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
-import { TrainerScheduleSheet } from './_components/TrainerScheduleSheet'
+import {
+  TrainerScheduleSheet,
+  type TrainerSessionDraft,
+} from './_components/TrainerScheduleSheet'
 
 interface SessionRow {
   id: string
+  athleteId: string
   scheduledAt: string
   duration: number
   cancelled: boolean
@@ -52,6 +56,21 @@ export default function TrainerDashboard() {
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [athletes, setAthletes] = useState<AthleteRow[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetInitial, setSheetInitial] = useState<TrainerSessionDraft | null>(null)
+
+  function openCreate() {
+    setSheetInitial(null)
+    setSheetOpen(true)
+  }
+  function openEdit(s: SessionRow) {
+    setSheetInitial({
+      id: s.id,
+      athleteId: s.athleteId,
+      scheduledAt: s.scheduledAt,
+      duration: s.duration,
+    })
+    setSheetOpen(true)
+  }
 
   const loadSessions = useCallback(async () => {
     const start = startOfWeek(new Date())
@@ -191,7 +210,7 @@ export default function TrainerDashboard() {
           <div className="flex items-baseline justify-between mb-3">
             <div className="dsc-label text-black/50">This week</div>
             <button
-              onClick={() => setSheetOpen(true)}
+              onClick={openCreate}
               className="dsc-label bg-black text-white px-3 py-1.5 rounded-full hover:bg-black/85"
             >
               + Schedule
@@ -222,25 +241,28 @@ export default function TrainerDashboard() {
                     {list.length === 0 ? (
                       <span className="text-xs text-black/30 italic">—</span>
                     ) : (
-                      list.map((s) => (
-                        <span
-                          key={s.id}
-                          className={`inline-flex items-baseline gap-1.5 px-2 py-1 rounded text-xs leading-tight ${
-                            s.cancelled
-                              ? 'bg-black/5 text-black/40 line-through'
-                              : s.completed
-                                ? 'bg-emerald-100 text-emerald-900'
-                                : 'bg-black text-white'
-                          }`}
-                        >
-                          <span className="font-mono text-[10px] opacity-80">
-                            {fmtTime(s.scheduledAt)}
-                          </span>
-                          <span className="font-medium">
-                            {s.athlete.firstName}
-                          </span>
-                        </span>
-                      ))
+                      list.map((s) => {
+                        const base = s.cancelled
+                          ? 'bg-black/5 text-black/40 line-through'
+                          : s.completed
+                            ? 'bg-emerald-100 text-emerald-900'
+                            : 'bg-black text-white hover:opacity-85 active:opacity-70 cursor-pointer'
+                        return (
+                          <button
+                            key={s.id}
+                            onClick={s.cancelled ? undefined : () => openEdit(s)}
+                            disabled={s.cancelled}
+                            className={`inline-flex items-baseline gap-1.5 px-2 py-1 rounded text-xs leading-tight ${base}`}
+                          >
+                            <span className="font-mono text-[10px] opacity-80">
+                              {fmtTime(s.scheduledAt)}
+                            </span>
+                            <span className="font-medium">
+                              {s.athlete.firstName}
+                            </span>
+                          </button>
+                        )
+                      })
                     )}
                   </div>
                 </div>
@@ -286,6 +308,7 @@ export default function TrainerDashboard() {
 
       <TrainerScheduleSheet
         open={sheetOpen}
+        initial={sheetInitial}
         athletes={athletes}
         onClose={() => setSheetOpen(false)}
         onSaved={() => {

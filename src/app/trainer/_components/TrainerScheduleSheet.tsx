@@ -8,8 +8,16 @@ interface AthleteOpt {
   lastName: string
 }
 
+export interface TrainerSessionDraft {
+  id?: string // existing session id, for edit mode
+  athleteId?: string
+  scheduledAt?: string // ISO
+  duration?: number
+}
+
 interface Props {
   open: boolean
+  initial: TrainerSessionDraft | null
   athletes: AthleteOpt[]
   onClose: () => void
   onSaved: () => void
@@ -19,27 +27,41 @@ const DURATIONS = [30, 45, 60, 90]
 
 function defaultWhen(): string {
   const d = new Date()
-  d.setHours(d.getHours() + 1, 0, 0, 0) // next hour, top of hour
+  d.setHours(d.getHours() + 1, 0, 0, 0)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props) {
+function toLocalDatetimeInput(iso: string | undefined): string {
+  if (!iso) return defaultWhen()
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function TrainerScheduleSheet({
+  open,
+  initial,
+  athletes,
+  onClose,
+  onSaved,
+}: Props) {
   const [athleteId, setAthleteId] = useState('')
   const [when, setWhen] = useState(defaultWhen())
   const [duration, setDuration] = useState<number>(60)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isEditing = Boolean(initial?.id)
 
   useEffect(() => {
     if (!open) return
-    setAthleteId('')
-    setWhen(defaultWhen())
-    setDuration(60)
+    setAthleteId(initial?.athleteId ?? '')
+    setWhen(toLocalDatetimeInput(initial?.scheduledAt))
+    setDuration(initial?.duration ?? 60)
     setNotes('')
     setError(null)
-  }, [open])
+  }, [open, initial])
 
   if (!open) return null
 
@@ -55,19 +77,22 @@ export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/sessions', {
-        method: 'POST',
+      const body = {
+        athleteId,
+        scheduledAt: new Date(when).toISOString(),
+        duration,
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+      }
+      const url = isEditing ? `/api/sessions/${initial!.id}` : '/api/sessions'
+      const method = isEditing ? 'PATCH' : 'POST'
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          athleteId,
-          scheduledAt: new Date(when).toISOString(),
-          duration,
-          notes: notes.trim() || undefined,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!data.success) {
-        setError(data.error ?? 'Could not schedule.')
+        setError(data.error ?? 'Could not save.')
         setSaving(false)
         return
       }
@@ -75,6 +100,24 @@ export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCancel() {
+    if (!isEditing) return
+    if (!confirm('Cancel this session?')) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/sessions/${initial!.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        onSaved()
+        onClose()
+      } else {
+        setError(data.error ?? 'Cancel failed.')
+      }
     } finally {
       setSaving(false)
     }
@@ -91,8 +134,12 @@ export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props
       >
         <div className="px-5 pt-5 pb-3 flex items-center justify-between">
           <div>
-            <div className="dsc-label text-black/40">New session</div>
-            <div className="dsc-headline text-2xl text-black">Schedule</div>
+            <div className="dsc-label text-black/40">
+              {isEditing ? 'Edit session' : 'New session'}
+            </div>
+            <div className="dsc-headline text-2xl text-black">
+              {isEditing ? 'Adjust' : 'Schedule'}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -152,16 +199,18 @@ export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props
             </div>
           </label>
 
-          <label className="block">
-            <div className="dsc-label text-black/50 mb-1">Notes (optional)</div>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Anything to remember"
-              className="w-full h-11 px-3 bg-black/5 rounded-xl text-black placeholder:text-black/40"
-            />
-          </label>
+          {!isEditing && (
+            <label className="block">
+              <div className="dsc-label text-black/50 mb-1">Notes (optional)</div>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Anything to remember"
+                className="w-full h-11 px-3 bg-black/5 rounded-xl text-black placeholder:text-black/40"
+              />
+            </label>
+          )}
 
           {error && (
             <div className="bg-red-50 rounded-2xl px-4 py-3 flex items-start gap-3">
@@ -170,13 +219,24 @@ export function TrainerScheduleSheet({ open, athletes, onClose, onSaved }: Props
             </div>
           )}
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30 mt-2"
-          >
-            {saving ? 'Scheduling…' : 'Schedule'}
-          </button>
+          <div className="flex gap-2 pt-2">
+            {isEditing && (
+              <button
+                onClick={handleCancel}
+                disabled={saving}
+                className="flex-1 h-12 rounded-full border border-red-300 text-red-700 font-semibold disabled:opacity-50"
+              >
+                Cancel session
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30"
+            >
+              {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Schedule'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
