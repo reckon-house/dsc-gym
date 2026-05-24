@@ -106,6 +106,7 @@ model Athlete {
   emailVerified                Boolean   @default(false)
   emailVerificationToken       String?   @unique
   emailVerificationExpiresAt   DateTime?
+  waiverSignedAt               DateTime?
   archived                     Boolean   @default(false)
 
   sessions          Session[]

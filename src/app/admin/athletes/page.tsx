@@ -9,6 +9,8 @@ interface AthleteRow {
   firstName: string
   lastName: string
   email: string
+  emailVerified: boolean
+  waiverSignedAt: string | null
   trainer: {
     id: string
     user: { name: string }
@@ -106,8 +108,18 @@ export default function AthletesView() {
               className="rounded-2xl border border-black/10 p-3 md:p-4 flex items-center justify-between gap-3"
             >
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-black truncate">
-                  {a.firstName} {a.lastName}
+                <div className="font-semibold text-black truncate flex items-center gap-2">
+                  <span className="truncate">
+                    {a.firstName} {a.lastName}
+                  </span>
+                  {!a.waiverSignedAt && (
+                    <span
+                      className="dsc-label shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900"
+                      title="Athlete has not signed the waiver yet"
+                    >
+                      Waiver pending
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-black/50 truncate">{a.email}</div>
               </div>
