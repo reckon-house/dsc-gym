@@ -142,24 +142,26 @@ export default function ChatView() {
     <div className="flex flex-col h-screen bg-white">
       <AdminHeader title="Chat" />
 
-      {proposals.length > 0 && (
-        <div className="px-4 py-2 border-b border-blue-200 bg-blue-50 flex items-center gap-2 shrink-0">
-          <span className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="dsc-label text-blue-900">
-            {proposals.length} pending · say &ldquo;commit&rdquo; to confirm
-          </span>
-        </div>
-      )}
+      <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto">
+        {proposals.length > 0 && (
+          <div className="px-4 py-2 border-b border-blue-200 bg-blue-50 flex items-center gap-2 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="dsc-label text-blue-900">
+              {proposals.length} pending · say &ldquo;commit&rdquo; to confirm
+            </span>
+          </div>
+        )}
 
-      <div className="flex-1 min-h-0">
-        <ChatThread
-          messages={messages}
-          pending={pending}
-          onSend={sendMessage}
-          onVoiceCapture={sendMessage}
-          onPhotoCapture={handlePhoto}
-          onReset={handleReset}
-        />
+        <div className="flex-1 min-h-0">
+          <ChatThread
+            messages={messages}
+            pending={pending}
+            onSend={sendMessage}
+            onVoiceCapture={sendMessage}
+            onPhotoCapture={handlePhoto}
+            onReset={handleReset}
+          />
+        </div>
       </div>
     </div>
   )

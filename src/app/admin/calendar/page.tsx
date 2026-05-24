@@ -130,21 +130,23 @@ export default function CalendarView() {
   return (
     <div className="min-h-screen bg-white">
       <AdminHeader title="Calendar" />
-      <WeekGrid
-        weekStart={weekStart}
-        sessions={sessions}
-        proposals={[]}
-        onWeekChange={setWeekStart}
-        onSessionTap={handleSessionTap}
-        onAddTap={handleAddTap}
-      />
-      <div className="px-4 py-6 text-center">
-        <p className="text-sm text-black/50 max-w-md mx-auto">
-          Tap a session to edit, the <span className="font-semibold">+</span> to
-          add. Or go to{' '}
-          <span className="font-semibold text-black">Chat / Schedule</span> for
-          bulk changes.
-        </p>
+      <div className="max-w-3xl mx-auto w-full">
+        <WeekGrid
+          weekStart={weekStart}
+          sessions={sessions}
+          proposals={[]}
+          onWeekChange={setWeekStart}
+          onSessionTap={handleSessionTap}
+          onAddTap={handleAddTap}
+        />
+        <div className="px-4 py-6 text-center">
+          <p className="text-sm text-black/50 max-w-md mx-auto">
+            Tap a session to edit, the <span className="font-semibold">+</span> to
+            add. Or go to{' '}
+            <span className="font-semibold text-black">Chat / Schedule</span> for
+            bulk changes.
+          </p>
+        </div>
       </div>
 
       <SessionEditSheet
