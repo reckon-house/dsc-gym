@@ -207,7 +207,7 @@ export default function TrainerDashboard() {
                 <div
                   key={key}
                   className={`border-b border-black/10 last:border-b-0 grid grid-cols-[64px_1fr] items-center px-4 py-3 ${
-                    isToday ? 'bg-yellow-50' : ''
+                    isToday ? 'bg-black/[0.04]' : ''
                   }`}
                 >
                   <div>
