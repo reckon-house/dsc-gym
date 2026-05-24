@@ -5,8 +5,8 @@ import Image from 'next/image'
 
 export default function AthleteLanding() {
   return (
-    <div className="min-h-screen bg-white flex flex-col w-full max-w-md mx-auto">
-      <header className="px-4 py-5 flex items-center justify-between">
+    <div className="min-h-screen bg-white flex flex-col w-full max-w-5xl mx-auto">
+      <header className="px-4 md:px-6 py-5 flex items-center justify-between">
         <Link href="/athlete" aria-label="DSC home" className="block">
           <Image
             src="/logo-mark.png"
@@ -21,7 +21,7 @@ export default function AthleteLanding() {
         </Link>
       </header>
 
-      <div className="flex-1 flex items-stretch px-4 pb-4">
+      <div className="flex-1 flex items-stretch px-4 md:px-6 pb-4">
         <div
           className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
           style={{
@@ -34,31 +34,33 @@ export default function AthleteLanding() {
           {/* Bottom gradient overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
 
-          <div className="relative p-6 pb-8 space-y-6">
-            <div className="dsc-enter">
-              <div className="dsc-label text-white/70 mb-2">
-                Dallas Sports Collective
+          <div className="relative p-6 pb-8 md:p-10 md:pb-10">
+            <div className="w-full max-w-md space-y-6">
+              <div className="dsc-enter">
+                <div className="dsc-label text-white/70 mb-2">
+                  Dallas Sports Collective
+                </div>
+                <h1 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85] mb-2">
+                  Unlock your
+                  <br />
+                  peak.
+                </h1>
               </div>
-              <h1 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85] mb-2">
-                Unlock your
-                <br />
-                peak.
-              </h1>
-            </div>
 
-            <div className="space-y-2 dsc-enter-delay-1">
-              <Link
-                href="/athlete/login"
-                className="block w-full bg-white text-black py-4 rounded-full text-center dsc-headline text-lg"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/athlete/register"
-                className="block w-full border-2 border-white/80 text-white py-4 rounded-full text-center dsc-headline text-lg"
-              >
-                New here? Register
-              </Link>
+              <div className="space-y-2 dsc-enter-delay-1">
+                <Link
+                  href="/athlete/login"
+                  className="block w-full bg-white text-black py-4 rounded-full text-center dsc-headline text-lg"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/athlete/register"
+                  className="block w-full border-2 border-white/80 text-white py-4 rounded-full text-center dsc-headline text-lg"
+                >
+                  New here? Register
+                </Link>
+              </div>
             </div>
           </div>
         </div>
