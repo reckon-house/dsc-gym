@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { validateBooking } from '@/lib/scheduling/engine'
 
 // GET /api/sessions - List sessions
 export async function GET(request: NextRequest) {
@@ -154,19 +155,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify athlete belongs to trainer
-    const athlete = await db.athlete.findFirst({
-      where: {
-        id: athleteId,
-        trainerId,
-      },
-    })
+    // For trainers: athlete must be one of THEIRS. Admins can book anyone.
+    if (session.role !== 'ADMIN') {
+      const athlete = await db.athlete.findFirst({
+        where: { id: athleteId, trainerId },
+      })
+      if (!athlete) {
+        return NextResponse.json(
+          { success: false, error: 'Athlete not found or not assigned to you.' },
+          { status: 404 }
+        )
+      }
+    }
 
-    if (!athlete) {
-      return NextResponse.json(
-        { success: false, error: 'Athlete not found or not assigned to this trainer' },
-        { status: 404 }
-      )
+    // ALL session creates go through the engine — same rules whether
+    // it's admin via chat, admin via tap-to-edit, or trainer via the
+    // trainer dashboard. No more parallel paths that bypass validation.
+    const validation = await validateBooking(DEFAULT_GYM_ID, {
+      trainerId,
+      athleteId,
+      scheduledAt: new Date(scheduledAt),
+      duration,
+    })
+    if (!validation.ok) {
+      return NextResponse.json({
+        success: false,
+        error: validation.conflicts[0]?.message ?? 'Conflict',
+        conflicts: validation.conflicts,
+      })
     }
 
     const newSession = await db.session.create({
@@ -177,6 +193,7 @@ export async function POST(request: NextRequest) {
         scheduledAt: new Date(scheduledAt),
         duration,
         notes,
+        attendees: { create: [{ athleteId }] },
       },
       include: {
         athlete: {

@@ -28,6 +28,13 @@ const TRAINER_PATHS = ['/trainer']
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Root path: let /page.tsx decide (it routes to /athlete for guests,
+  // /admin or /trainer for logged-in staff). Exact match so we don't
+  // accidentally let everything through.
+  if (pathname === '/') {
+    return NextResponse.next()
+  }
+
   // Allow public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()

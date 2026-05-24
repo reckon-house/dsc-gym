@@ -25,8 +25,9 @@ export async function POST(request: NextRequest) {
       where: { email: email.toLowerCase() },
     })
 
-    // Use a generic error so we don't leak which emails exist.
-    if (!athlete || !athlete.passwordHash) {
+    // Use a generic error so we don't leak which emails exist OR which
+    // ones are archived.
+    if (!athlete || !athlete.passwordHash || athlete.archived) {
       return NextResponse.json(
         { success: false, error: 'Invalid email or password' },
         { status: 401 }
