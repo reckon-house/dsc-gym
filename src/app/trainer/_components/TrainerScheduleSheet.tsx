@@ -125,11 +125,11 @@ export function TrainerScheduleSheet({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end md:items-center md:justify-center bg-black/40"
+      className="fixed inset-0 z-40 flex items-end md:items-center md:justify-center bg-black/40 dsc-sheet-backdrop"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[90vh] overflow-y-auto dsc-sheet-panel"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 pt-5 pb-3 flex items-center justify-between">
