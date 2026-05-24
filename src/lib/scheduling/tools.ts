@@ -484,15 +484,33 @@ export async function dispatchTool(
 
     case 'list_athletes': {
       const includeArchived = Boolean(input.includeArchived)
-      const where: { gymId: string; trainerId?: string; OR?: unknown[]; archived?: false } = { gymId }
+      const where: {
+        gymId: string
+        trainerId?: string
+        AND?: unknown[]
+        OR?: unknown[]
+        archived?: false
+      } = { gymId }
       if (!includeArchived) where.archived = false
       if (typeof input.trainerId === 'string') where.trainerId = input.trainerId
       if (typeof input.nameLike === 'string') {
-        const q = input.nameLike
-        where.OR = [
-          { firstName: { contains: q, mode: 'insensitive' } },
-          { lastName: { contains: q, mode: 'insensitive' } },
-        ]
+        // Split on whitespace so "Marcus Chen" matches against
+        // firstName=Marcus + lastName=Chen. Each token has to land in
+        // either firstName or lastName.
+        const tokens = input.nameLike.split(/\s+/).filter(Boolean)
+        if (tokens.length === 1) {
+          where.OR = [
+            { firstName: { contains: tokens[0], mode: 'insensitive' } },
+            { lastName: { contains: tokens[0], mode: 'insensitive' } },
+          ]
+        } else if (tokens.length > 1) {
+          where.AND = tokens.map((t) => ({
+            OR: [
+              { firstName: { contains: t, mode: 'insensitive' } },
+              { lastName: { contains: t, mode: 'insensitive' } },
+            ],
+          }))
+        }
       }
       const athletes = await db.athlete.findMany({
         where: where as never,

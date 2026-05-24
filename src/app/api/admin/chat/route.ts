@@ -11,7 +11,11 @@ import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { getOrCreateActiveDraft } from '@/lib/scheduling/engine'
 import { SCHEDULING_TOOLS, dispatchTool } from '@/lib/scheduling/tools'
 
-const MODEL_ID = 'claude-opus-4-7'
+// Sonnet handles the scheduler chat well — tool use + multi-step
+// orchestration, not deep reasoning. The engine is the authority, so
+// the model isn't load-bearing. CLAUDE_MODEL env var lets us flip back
+// to Opus or any other model without a deploy.
+const MODEL_ID = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
 const MAX_TOOL_ROUNDS = 8
 
 interface StoredMessage {
