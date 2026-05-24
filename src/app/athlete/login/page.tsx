@@ -96,13 +96,23 @@ function LoginInner() {
               />
 
               {error && (
-                <div className="rounded-2xl bg-red-500/20 border border-red-300/40 text-red-100 px-4 py-2 text-sm backdrop-blur">
-                  {error.message}
-                  {error.needsVerification && (
-                    <div className="mt-1 text-xs opacity-80">
-                      Check your inbox for the confirmation link.
-                    </div>
-                  )}
+                <div className="bg-white rounded-2xl px-5 py-3 flex items-start gap-3">
+                  <span
+                    className="w-2 h-2 rounded-full bg-red-500 mt-2 shrink-0"
+                    aria-hidden
+                  />
+                  <div className="text-sm leading-snug text-black">
+                    {error.needsVerification ? (
+                      <>
+                        <div className="font-semibold">Confirm your email first.</div>
+                        <div className="text-black/60 mt-0.5">
+                          Tap the link we sent to your inbox.
+                        </div>
+                      </>
+                    ) : (
+                      <div>{error.message}</div>
+                    )}
+                  </div>
                 </div>
               )}
 

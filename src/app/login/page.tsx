@@ -100,8 +100,12 @@ export default function LoginPage() {
               />
 
               {error && (
-                <div className="rounded-2xl bg-red-500/20 border border-red-300/40 text-red-100 px-4 py-2 text-sm backdrop-blur">
-                  {error}
+                <div className="bg-white rounded-2xl px-5 py-3 flex items-start gap-3">
+                  <span
+                    className="w-2 h-2 rounded-full bg-red-500 mt-2 shrink-0"
+                    aria-hidden
+                  />
+                  <div className="text-sm text-black leading-snug">{error}</div>
                 </div>
               )}
 
