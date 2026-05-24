@@ -227,7 +227,7 @@ export default function AthleteRegister() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-14 bg-black text-white rounded-full dsc-headline text-lg disabled:bg-black/40 mt-3"
+                className="w-full h-14 border-2 border-white/80 text-white rounded-full dsc-headline text-lg hover:bg-white/10 transition-colors disabled:opacity-40 mt-3"
               >
                 {loading ? 'CREATING…' : 'CREATE ACCOUNT'}
               </button>
