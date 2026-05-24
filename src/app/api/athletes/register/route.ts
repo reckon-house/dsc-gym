@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashPassword(password)
     const token = generateVerificationToken()
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
+    const signedAt = new Date()
 
     const athlete = await db.athlete.create({
       data: {
@@ -67,6 +68,11 @@ export async function POST(request: NextRequest) {
         emailVerified: false,
         emailVerificationToken: token,
         emailVerificationExpiresAt: expiresAt,
+        // The "I have read and agree" checkbox on the registration form is
+        // the formal sign event — record it here. (Submission is blocked
+        // server-side without legalName, and client-side without the
+        // checkbox.)
+        waiverSignedAt: signedAt,
       },
     })
 
@@ -80,6 +86,7 @@ export async function POST(request: NextRequest) {
         legalName: legalName.trim(),
         ipAddress,
         athleteId: athlete.id,
+        signedAt,
       },
     })
 

@@ -47,26 +47,17 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const now = new Date()
   await db.athlete.update({
     where: { id: athlete.id },
     data: {
       emailVerified: true,
       emailVerificationToken: null,
       emailVerificationExpiresAt: null,
-      waiverSignedAt: now,
     },
   })
 
-  // Stamp the existing WaiverSignature row's signedAt with the actual
-  // confirmation time and capture the IP for audit. (We created the row
-  // at registration with a placeholder "intent" time.)
-  const forwardedFor = request.headers.get('x-forwarded-for')
-  const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : 'unknown'
-  await db.waiverSignature.updateMany({
-    where: { athleteId: athlete.id },
-    data: { signedAt: now, ipAddress },
-  })
+  // Note: the waiver was signed at registration. This endpoint only
+  // verifies the email — identity confirmation, not the legal sign event.
 
   return NextResponse.json({
     success: true,
