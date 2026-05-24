@@ -136,6 +136,60 @@ body {
   text-transform: uppercase;
 }
 
+/* Entrance animations — shared across athlete landing/login/register
+   so navigating between them feels like a continuous flow. */
+@keyframes dsc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dsc-enter {
+  animation: dsc-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dsc-enter-delay-1 {
+  animation: dsc-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
+}
+
+.dsc-enter-delay-2 {
+  animation: dsc-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+.dsc-enter-delay-3 {
+  animation: dsc-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+}
+
+@keyframes dsc-image-in {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dsc-image-enter {
+  animation: dsc-image-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsc-enter,
+  .dsc-enter-delay-1,
+  .dsc-enter-delay-2,
+  .dsc-enter-delay-3,
+  .dsc-image-enter {
+    animation: none;
+  }
+}
+
 /* Forced light scheme — the brand is black-on-white, not auto-dark. */
 @media (prefers-color-scheme: dark) {
   :root {

@@ -71,24 +71,24 @@ export default function AthleteRegister() {
     return (
       <div className="min-h-screen bg-white flex flex-col">
         <header className="px-4 py-5">
-          <Link href="/athlete" className="dsc-headline text-2xl text-black">
-            DSC
-          </Link>
+          <HeaderLogo />
         </header>
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="max-w-md w-full">
-            <div className="dsc-label text-black/40 mb-2">Almost done</div>
-            <h2 className="dsc-headline text-3xl md:text-4xl text-black mb-4">
-              Check your email
-            </h2>
-            <p className="text-black/70 mb-6 leading-snug">
-              We sent a confirmation link to{' '}
-              <span className="font-semibold text-black">{success.email}</span>.
-              Click it to activate your account, then sign in.
-            </p>
+            <div className="dsc-enter">
+              <div className="dsc-label text-black/40 mb-2">Almost done</div>
+              <h2 className="dsc-headline text-3xl md:text-4xl text-black mb-4">
+                Check your email
+              </h2>
+              <p className="text-black/70 mb-6 leading-snug">
+                We sent a confirmation link to{' '}
+                <span className="font-semibold text-black">{success.email}</span>.
+                Click it to activate your account, then sign in.
+              </p>
+            </div>
 
             {!success.emailDelivered && success.verificationUrl && (
-              <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 mb-6">
+              <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 mb-6 dsc-enter-delay-1">
                 <div className="dsc-label text-yellow-900 mb-1">
                   Dev mode — no email service configured
                 </div>
@@ -106,7 +106,7 @@ export default function AthleteRegister() {
 
             <Link
               href="/athlete/login"
-              className="block w-full text-center py-3 bg-black text-white rounded-full font-semibold"
+              className="block w-full text-center py-3 bg-black text-white rounded-full font-semibold dsc-enter-delay-2"
             >
               Go to sign in
             </Link>
@@ -125,86 +125,114 @@ export default function AthleteRegister() {
         </Link>
       </header>
 
-      <div className="flex-1 flex items-start justify-center px-6 py-4">
-        <div className="w-full max-w-md">
-          <div className="dsc-label text-black/40 mb-2">New athlete</div>
-          <h2 className="dsc-headline text-3xl md:text-4xl text-black mb-6">
-            Register
-          </h2>
+      <div className="flex-1 flex items-stretch px-4 pb-4">
+        <div
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
+          style={{
+            backgroundImage: 'url(/images/landing-page-bg.jpg)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            minHeight: '85vh',
+          }}
+        >
+          {/* Stronger bottom gradient — register form is taller than login */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none" />
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="First name"
-                value={formData.firstName}
-                onChange={(v) => setFormData({ ...formData, firstName: v })}
-                required
-              />
-              <Field
-                label="Last name"
-                value={formData.lastName}
-                onChange={(v) => setFormData({ ...formData, lastName: v })}
-                required
-              />
+          <div className="relative p-6 pb-8 space-y-5">
+            <div className="dsc-enter">
+              <div className="dsc-label text-white/70 mb-2">New athlete</div>
+              <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">
+                Join the
+                <br />
+                collective.
+              </h2>
             </div>
-            <Field
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={(v) => setFormData({ ...formData, email: v })}
-              required
-            />
-            <Field
-              label="Password"
-              type="password"
-              value={formData.password}
-              onChange={(v) => setFormData({ ...formData, password: v })}
-              hint="At least 6 characters"
-              required
-            />
-            <Field
-              label="Legal name (for waiver)"
-              value={formData.legalName}
-              onChange={(v) => setFormData({ ...formData, legalName: v })}
-              placeholder={`${formData.firstName} ${formData.lastName}`.trim() || 'Same as above'}
-            />
 
-            <label className="flex items-start gap-3 pt-2">
-              <input
-                type="checkbox"
-                checked={formData.agreed}
-                onChange={(e) =>
-                  setFormData({ ...formData, agreed: e.target.checked })
-                }
-                className="mt-1 w-5 h-5 accent-black"
-              />
-              <span className="text-sm text-black/80 leading-snug">
-                I have read and agree to the{' '}
-                <button
-                  type="button"
-                  onClick={() => setShowWaiver(true)}
-                  className="underline text-black"
-                >
-                  waiver and disclaimer
-                </button>
-                .
-              </span>
-            </label>
-
-            {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
-                {error}
+            <form onSubmit={handleSubmit} className="space-y-2 dsc-enter-delay-1">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  required
+                  placeholder="First name"
+                  className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                />
+                <input
+                  type="text"
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  required
+                  placeholder="Last name"
+                  className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                />
               </div>
-            )}
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+                autoComplete="email"
+                placeholder="Email"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                autoComplete="new-password"
+                placeholder="Password (6+ characters)"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
+              <input
+                type="text"
+                value={formData.legalName}
+                onChange={(e) => setFormData({ ...formData, legalName: e.target.value })}
+                placeholder={
+                  `${formData.firstName} ${formData.lastName}`.trim() ||
+                  'Legal name for waiver'
+                }
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30"
-            >
-              {loading ? 'Creating…' : 'Create account'}
-            </button>
-          </form>
+              <label className="flex items-start gap-3 pt-2 px-1">
+                <input
+                  type="checkbox"
+                  checked={formData.agreed}
+                  onChange={(e) =>
+                    setFormData({ ...formData, agreed: e.target.checked })
+                  }
+                  className="mt-1 w-5 h-5 accent-white shrink-0"
+                />
+                <span className="text-sm text-white/85 leading-snug">
+                  I have read and agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowWaiver(true)}
+                    className="underline text-white"
+                  >
+                    waiver and disclaimer
+                  </button>
+                  .
+                </span>
+              </label>
+
+              {error && (
+                <div className="rounded-2xl bg-red-500/20 border border-red-300/40 text-red-100 px-4 py-2 text-sm backdrop-blur">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-14 bg-black text-white rounded-full dsc-headline text-lg disabled:bg-black/40 mt-3"
+              >
+                {loading ? 'CREATING…' : 'CREATE ACCOUNT'}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -254,38 +282,5 @@ export default function AthleteRegister() {
         </div>
       )}
     </div>
-  )
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  placeholder,
-  hint,
-  required,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  type?: string
-  placeholder?: string
-  hint?: string
-  required?: boolean
-}) {
-  return (
-    <label className="block">
-      <div className="dsc-label text-black/50 mb-1">{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
-      />
-      {hint && <div className="text-xs text-black/40 mt-1">{hint}</div>}
-    </label>
   )
 }

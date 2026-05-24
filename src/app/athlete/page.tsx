@@ -23,7 +23,7 @@ export default function AthleteLanding() {
 
       <div className="flex-1 flex items-stretch px-4 pb-4">
         <div
-          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end"
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
           style={{
             backgroundImage: 'url(/images/landing-page-bg.jpg)',
             backgroundSize: 'cover',
@@ -35,7 +35,7 @@ export default function AthleteLanding() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
 
           <div className="relative p-6 pb-8 space-y-6">
-            <div>
+            <div className="dsc-enter">
               <div className="dsc-label text-white/70 mb-2">
                 Dallas Sports Collective
               </div>
@@ -46,7 +46,7 @@ export default function AthleteLanding() {
               </h1>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 dsc-enter-delay-1">
               <Link
                 href="/athlete/login"
                 className="block w-full bg-white text-black py-4 rounded-full text-center dsc-headline text-lg"

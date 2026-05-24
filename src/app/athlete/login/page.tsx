@@ -54,7 +54,7 @@ function LoginInner() {
 
       <div className="flex-1 flex items-stretch px-4 pb-4">
         <div
-          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end"
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
           style={{
             backgroundImage: 'url(/images/landing-page-bg.jpg)',
             backgroundSize: 'cover',
@@ -66,7 +66,7 @@ function LoginInner() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
 
           <div className="relative p-6 pb-8 space-y-6">
-            <div>
+            <div className="dsc-enter">
               <div className="dsc-label text-white/70 mb-2">Athlete</div>
               <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">
                 Welcome
@@ -75,7 +75,7 @@ function LoginInner() {
               </h2>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-2">
+            <form onSubmit={handleSubmit} className="space-y-2 dsc-enter-delay-1">
               <input
                 type="email"
                 value={email}
