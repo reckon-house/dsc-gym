@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, hashPassword } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // POST /api/admin/trainers - Create a new trainer (admin only)
 export async function POST(request: NextRequest) {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
         name,
         role: 'TRAINER',
         trainer: {
-          create: {},
+          create: { gymId: DEFAULT_GYM_ID },
         },
       },
       include: {

@@ -74,6 +74,9 @@ export async function GET() {
             scheduledAt: 'asc',
           },
         },
+        availability: {
+          orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }],
+        },
       },
     })
 
@@ -90,6 +93,11 @@ export async function GET() {
         totalAthletes: trainer._count.athletes,
         totalSessions: trainer._count.sessions,
         todaySessions: todaySessions,
+        availability: trainer.availability.map((a) => ({
+          dayOfWeek: a.dayOfWeek,
+          startMinute: a.startMinute,
+          endMinute: a.endMinute,
+        })),
         todayStats: {
           total: totalToday,
           completed: completedToday,

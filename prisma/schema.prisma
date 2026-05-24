@@ -8,44 +8,135 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Gym {
+  id        String   @id @default(cuid())
+  name      String
+  timezone  String   @default("America/Chicago")
+  createdAt DateTime @default(now())
+
+  config           GymConfig?
+  trainers         Trainer[]
+  athletes         Athlete[]
+  sessions         Session[]
+  checkIns         CheckIn[]
+  walkIns          WalkIn[]
+  waiverSignatures WaiverSignature[]
+  draftSchedules   DraftSchedule[]
+}
+
+model GymConfig {
+  id                      String   @id @default(cuid())
+  gymId                   String   @unique
+  gym                     Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  floorCap                Int      @default(2)
+  sessionLengthsJson      String   @default("[30,60]")
+  bufferMinutes           Int      @default(0)
+  allowSameTrainerSameDay Boolean  @default(true)
+  cancellationPolicyHours Int      @default(24)
+  noShowPolicy            String   @default("flag_only")
+  defaultSessionMinutes   Int      @default(60)
+  updatedAt               DateTime @updatedAt
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
   name         String
-  role         String   @default("TRAINER") // ADMIN or TRAINER
+  role         String   @default("TRAINER")
   createdAt    DateTime @default(now())
 
   trainer Trainer?
 }
 
 model Trainer {
-  id        String    @id @default(cuid())
-  userId    String    @unique
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  athletes  Athlete[]
-  sessions  Session[]
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  gymId    String
+  archived Boolean  @default(false)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym      Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  athletes      Athlete[]
+  sessions      Session[]
+  availability  TrainerAvailability[]
+  exceptions    AvailabilityException[]
+
+  @@index([gymId])
+  @@index([archived])
+}
+
+model TrainerAvailability {
+  id          String  @id @default(cuid())
+  trainerId   String
+  trainer     Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startMinute Int
+  endMinute   Int
+
+  @@index([trainerId, dayOfWeek])
+}
+
+model AvailabilityException {
+  id          String   @id @default(cuid())
+  trainerId   String
+  trainer     Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  startMinute Int?
+  endMinute   Int?
+  isAvailable Boolean
+  reason      String?
+
+  @@index([trainerId, date])
 }
 
 model Athlete {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
+  gymId        String
   firstName    String
   lastName     String
-  email        String    @unique
+  email        String   @unique
   phone        String?
   passwordHash String?
   address      String?
   trainerId    String?
-  trainer      Trainer?  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  sessions     Session[]
-  checkIns     CheckIn[]
-  createdAt    DateTime  @default(now())
+  trainer      Trainer? @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  gym          Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  emailVerified                Boolean   @default(false)
+  emailVerificationToken       String?   @unique
+  emailVerificationExpiresAt   DateTime?
+  archived                     Boolean   @default(false)
+
+  sessions          Session[]
+  sessionAttendees  SessionAttendee[]
+  checkIns          CheckIn[]
+  standingSlots     AthleteStandingSlot[]
+  createdAt         DateTime  @default(now())
+
+  @@index([gymId])
+  @@index([archived])
+}
+
+model AthleteStandingSlot {
+  id          String  @id @default(cuid())
+  athleteId   String
+  athlete     Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  trainerId   String?
+  dayOfWeek   Int
+  startMinute Int
+  duration    Int     @default(60)
+  active      Boolean @default(true)
+  notes       String?
+
+  @@index([athleteId])
 }
 
 model Session {
   id                String    @id @default(cuid())
+  gymId             String
   trainerId         String
-  athleteId         String
+  athleteId         String    // primary attendee; group sessions also use SessionAttendee
   scheduledAt       DateTime
   duration          Int       @default(60)
   isRecurring       Boolean   @default(false)
@@ -58,42 +149,120 @@ model Session {
   notes             String?
   createdAt         DateTime  @default(now())
 
+  gym           Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
   trainer       Trainer   @relation(fields: [trainerId], references: [id])
   athlete       Athlete   @relation(fields: [athleteId], references: [id])
+  attendees     SessionAttendee[]
   parentSession Session?  @relation("RecurringSessions", fields: [parentSessionId], references: [id])
   childSessions Session[] @relation("RecurringSessions")
   checkIn       CheckIn?
+
+  @@index([gymId, scheduledAt])
+  @@index([trainerId, scheduledAt])
+}
+
+model SessionAttendee {
+  id        String  @id @default(cuid())
+  sessionId String
+  athleteId String
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, athleteId])
+  @@index([athleteId])
 }
 
 model CheckIn {
   id          String   @id @default(cuid())
+  gymId       String
   athleteId   String
   sessionId   String?  @unique
   checkInTime DateTime @default(now())
   matched     Boolean  @default(false)
 
+  gym     Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
   athlete Athlete  @relation(fields: [athleteId], references: [id])
   session Session? @relation(fields: [sessionId], references: [id])
+
+  @@index([gymId])
 }
 
 model WalkIn {
-  id          String   @id @default(cuid())
-  name        String
-  email       String?
-  checkInTime DateTime @default(now())
-  claimed     Boolean  @default(false)
-  claimedBy   String?  // trainerId if assigned
-  claimedAt   DateTime?
-  convertedToAthleteId String? // athleteId if converted to real athlete
+  id                   String    @id @default(cuid())
+  gymId                String
+  name                 String
+  email                String?
+  checkInTime          DateTime  @default(now())
+  claimed              Boolean   @default(false)
+  claimedBy            String?
+  claimedAt            DateTime?
+  convertedToAthleteId String?
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@index([gymId])
 }
 
 model WaiverSignature {
-  id            String   @id @default(cuid())
-  email         String
-  legalName     String
-  signedAt      DateTime @default(now())
-  ipAddress     String?
-  athleteId     String?
+  id        String   @id @default(cuid())
+  gymId     String
+  email     String
+  legalName String
+  signedAt  DateTime @default(now())
+  ipAddress String?
+  athleteId String?
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
 
   @@index([email])
+  @@index([gymId])
+}
+
+model DraftSchedule {
+  id          String   @id @default(cuid())
+  gymId       String
+  createdById String?
+  status      String   @default("active")
+  title       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  proposedBookings ProposedBooking[]
+  messages         ChatMessage[]
+
+  @@index([gymId, status])
+}
+
+model ProposedBooking {
+  id                String        @id @default(cuid())
+  draftId           String
+  draft             DraftSchedule @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  action            String
+  trainerId         String?
+  athleteId         String?
+  scheduledAt       DateTime?
+  duration          Int           @default(60)
+  existingSessionId String?
+  notes             String?
+  conflictReason    String?
+  status            String        @default("pending")
+  createdAt         DateTime      @default(now())
+
+  @@index([draftId])
+}
+
+model ChatMessage {
+  id        String        @id @default(cuid())
+  draftId   String
+  draft     DraftSchedule @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  toolCalls Json?
+  createdAt DateTime      @default(now())
+
+  @@index([draftId, createdAt])
 }

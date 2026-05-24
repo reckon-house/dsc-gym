@@ -1,141 +1,112 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-function AthleteLoginContent() {
-  const searchParams = useSearchParams()
-  const [name, setName] = useState('')
+function LoginInner() {
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [justRegistered, setJustRegistered] = useState(false)
+  const [error, setError] = useState<{ message: string; needsVerification?: boolean } | null>(null)
 
-  useEffect(() => {
-    if (searchParams.get('registered') === 'true') {
-      setJustRegistered(true)
-    }
-  }, [searchParams])
-
-  const handleCheckIn = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-
-    if (!name.trim()) {
-      setMessage({ type: 'error', text: 'Please enter your name' })
-      return
-    }
-
     setLoading(true)
-    setMessage(null)
-
+    setError(null)
     try {
-      const res = await fetch('/api/checkin', {
+      const res = await fetch('/api/athletes/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ email, password }),
       })
-
       const data = await res.json()
-
       if (data.success) {
-        setMessage({
-          type: 'success',
-          text: data.matched
-            ? `Welcome, ${data.athleteName}! You're checked in for your session.`
-            : `Welcome, ${data.athleteName}! Check-in recorded.`,
-        })
-        setName('')
+        router.replace('/athlete/dashboard')
       } else {
-        setMessage({ type: 'error', text: data.error || 'Check-in failed' })
+        setError({
+          message: data.error || 'Login failed',
+          needsVerification: data.needsVerification,
+        })
       }
     } catch {
-      setMessage({ type: 'error', text: 'An error occurred' })
+      setError({ message: 'Network error — try again' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header */}
-      <div className="pt-8 pb-4 text-center">
-        <Link href="/athlete">
-          <h1 className="text-3xl font-bold tracking-widest">DSC</h1>
+    <div className="min-h-screen bg-white flex flex-col">
+      <header className="px-4 py-5 flex items-center justify-between">
+        <Link href="/athlete" className="dsc-headline text-2xl text-black">
+          DSC
         </Link>
-      </div>
+        <Link
+          href="/athlete/register"
+          className="dsc-label text-black/60 hover:text-black"
+        >
+          Register
+        </Link>
+      </header>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-6 py-8">
+      <div className="flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-md">
-          {justRegistered && (
-            <div className="mb-6 p-4 bg-green-900/50 border border-green-600 text-green-200 text-center">
-              Registration successful! You can now check in for your sessions.
-            </div>
-          )}
-
-          <h2 className="text-2xl font-bold text-center mb-2 tracking-wide">
-            ATHLETE CHECK-IN
+          <div className="dsc-label text-black/40 mb-2">Athlete</div>
+          <h2 className="dsc-headline text-3xl md:text-4xl text-black mb-6">
+            Sign in
           </h2>
-          <p className="text-white/60 text-center mb-8">
-            Enter your name to start your training session
-          </p>
 
-          <form onSubmit={handleCheckIn} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium mb-2 tracking-wide">
-                YOUR NAME
-              </label>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <label className="block">
+              <div className="dsc-label text-black/50 mb-1">Email</div>
               <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && name.trim()) {
-                    e.preventDefault()
-                    handleCheckIn(e)
-                  }
-                }}
-                placeholder="First and last name"
-                className="w-full px-4 py-4 bg-white/10 border border-white/30 text-white text-lg placeholder-white/50 focus:border-white focus:outline-none"
-                autoFocus
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
               />
-            </div>
+            </label>
+            <label className="block">
+              <div className="dsc-label text-black/50 mb-1">Password</div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
+              />
+            </label>
 
-            {message && (
-              <div
-                className={`p-4 text-center ${
-                  message.type === 'success'
-                    ? 'bg-green-900/50 border border-green-600 text-green-200'
-                    : 'bg-red-900/50 border border-red-600 text-red-200'
-                }`}
-              >
-                {message.text}
+            {error && (
+              <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+                {error.message}
+                {error.needsVerification && (
+                  <div className="mt-1 text-xs">
+                    Check your inbox for the confirmation link.
+                  </div>
+                )}
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading || !name.trim()}
-              className="w-full py-4 bg-white text-black font-bold text-xl tracking-wide hover:bg-gray-100 transition-colors disabled:opacity-50"
+              disabled={loading}
+              className="w-full h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30"
             >
-              {loading ? 'CHECKING IN...' : 'START TRAINING'}
+              {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
 
-          <p className="text-center mt-8 text-white/60 text-sm">
-            New athlete?{' '}
-            <Link href="/athlete/register" className="underline hover:text-white">
-              Register here
+          <p className="text-center mt-6 text-sm text-black/50">
+            New to DSC?{' '}
+            <Link href="/athlete/register" className="underline text-black">
+              Register
             </Link>
           </p>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="py-6 text-center">
-        <p className="text-white/40 text-sm">
-          DSPORT COLLECTIVE
-        </p>
       </div>
     </div>
   )
@@ -143,12 +114,8 @@ function AthleteLoginContent() {
 
 export default function AthleteLogin() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    }>
-      <AthleteLoginContent />
+    <Suspense fallback={null}>
+      <LoginInner />
     </Suspense>
   )
 }

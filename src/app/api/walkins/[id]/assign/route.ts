@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // POST /api/walkins/[id]/assign - Assign walk-in to trainer and convert to athlete
 export async function POST(
@@ -68,6 +69,7 @@ export async function POST(
     // Create athlete from walk-in
     const athlete = await db.athlete.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         firstName,
         lastName,
         email: walkIn.email || `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}@placeholder.com`,

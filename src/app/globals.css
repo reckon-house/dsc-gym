@@ -106,18 +106,40 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: 'Avenir Next', system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: 'Avenir Next', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* DSC brand: small-caps mono label.
+   Matches "ONSITE THERAPY", "FOUNDED BY". */
+.dsc-label {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* DSC brand: huge tight uppercase headline.
+   Matches "GET BACK TO SPORT". */
+.dsc-headline {
+  font-family: 'Avenir Next', system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  text-transform: uppercase;
+}
+
+/* Forced light scheme — the brand is black-on-white, not auto-dark. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #ffffff;
+    --foreground: #171717;
+  }
 }

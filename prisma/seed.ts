@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import 'dotenv/config'
 
 const prisma = new PrismaClient()
+const GYM_ID = 'dsc_default_gym'
 
 async function main() {
   console.log('Seeding database...')
@@ -14,6 +15,19 @@ async function main() {
   await prisma.athlete.deleteMany()
   await prisma.trainer.deleteMany()
   await prisma.user.deleteMany()
+
+  // Ensure the DSC gym + default config exist (migration seeds them, but
+  // make this idempotent for re-runs after a manual wipe).
+  await prisma.gym.upsert({
+    where: { id: GYM_ID },
+    create: { id: GYM_ID, name: 'Dallas Sports Collective', timezone: 'America/Chicago' },
+    update: {},
+  })
+  await prisma.gymConfig.upsert({
+    where: { gymId: GYM_ID },
+    create: { gymId: GYM_ID },
+    update: {},
+  })
 
   // Create admin user
   const adminPassword = await bcrypt.hash('admin123', 10)
@@ -95,7 +109,7 @@ async function main() {
         name: trainerData.name,
         role: 'TRAINER',
         trainer: {
-          create: {},
+          create: { gymId: GYM_ID },
         },
       },
       include: { trainer: true },
@@ -106,6 +120,7 @@ async function main() {
       const { firstName, lastName } = athleteList[i]
       const athlete = await prisma.athlete.create({
         data: {
+          gymId: GYM_ID,
           firstName,
           lastName,
           email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace("'", "")}@email.com`,
@@ -120,6 +135,7 @@ async function main() {
 
       await prisma.session.create({
         data: {
+          gymId: GYM_ID,
           trainerId: user.trainer!.id,
           athleteId: athlete.id,
           scheduledAt: today,
@@ -134,6 +150,7 @@ async function main() {
 
       await prisma.session.create({
         data: {
+          gymId: GYM_ID,
           trainerId: user.trainer!.id,
           athleteId: athlete.id,
           scheduledAt: tomorrow,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // POST /api/checkin - Process athlete check-in
 export async function POST(request: NextRequest) {
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
       // Create a walk-in record for unknown visitors
       const walkIn = await db.walkIn.create({
         data: {
+          gymId: DEFAULT_GYM_ID,
           name: name || email,
           email: email || null,
         },
@@ -126,6 +128,7 @@ export async function POST(request: NextRequest) {
     // Create check-in record
     const checkIn = await db.checkIn.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         athleteId: athlete.id,
         sessionId: todaySession?.id || null,
         matched: !!todaySession,

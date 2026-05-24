@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // POST /api/waiver - Check if waiver is signed or sign a new one
 export async function POST(request: NextRequest) {
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
 
       const waiver = await db.waiverSignature.create({
         data: {
+          gymId: DEFAULT_GYM_ID,
           email: email.toLowerCase(),
           legalName: legalName.trim(),
           ipAddress,

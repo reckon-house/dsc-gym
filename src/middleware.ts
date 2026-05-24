@@ -14,6 +14,9 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/checkin',
   '/api/athletes/register',
+  '/api/athletes/verify',
+  '/api/athletes/auth',
+  '/api/athletes/me',
   '/api/athletes/parse-registration',
   '/api/waiver',
 ]

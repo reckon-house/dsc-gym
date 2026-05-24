@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // GET /api/sessions - List sessions
 export async function GET(request: NextRequest) {
@@ -79,15 +80,36 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        attendees: {
+          include: {
+            athlete: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         scheduledAt: 'asc',
       },
     })
 
+    // Flatten the attendees into a simpler array for the client.
+    const data = sessions.map((s) => ({
+      ...s,
+      attendees: s.attendees.map((a) => ({
+        id: a.athleteId,
+        firstName: a.athlete.firstName,
+        lastName: a.athlete.lastName,
+      })),
+    }))
+
     return NextResponse.json({
       success: true,
-      data: sessions,
+      data,
     })
   } catch (error) {
     console.error('Error fetching sessions:', error)
@@ -149,6 +171,7 @@ export async function POST(request: NextRequest) {
 
     const newSession = await db.session.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         trainerId,
         athleteId,
         scheduledAt: new Date(scheduledAt),

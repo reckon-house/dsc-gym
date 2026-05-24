@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 import type { ParseResult, ParsedSession, ParsedQuery } from '@/types'
 
 export interface QueryResultData {
@@ -113,6 +114,7 @@ async function createSession(
 
       const athlete = await db.athlete.create({
         data: {
+          gymId: DEFAULT_GYM_ID,
           firstName,
           lastName,
           email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}@placeholder.com`,
@@ -132,6 +134,7 @@ async function createSession(
 
     const session = await db.session.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         trainerId,
         athleteId,
         scheduledAt: new Date(sessionData.scheduledAt),
@@ -170,6 +173,7 @@ async function createRecurringSessions(
 
       const athlete = await db.athlete.create({
         data: {
+          gymId: DEFAULT_GYM_ID,
           firstName,
           lastName,
           email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}@placeholder.com`,
@@ -190,6 +194,7 @@ async function createRecurringSessions(
     // Create parent session
     const parentSession = await db.session.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         trainerId,
         athleteId,
         scheduledAt: new Date(sessionData.scheduledAt),
@@ -253,6 +258,7 @@ async function generateRecurringSessions(
   while (currentDate <= endDate) {
     const session = await db.session.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         trainerId,
         athleteId,
         scheduledAt: new Date(currentDate),
@@ -345,6 +351,7 @@ async function createAthlete(
   try {
     const athlete = await db.athlete.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         firstName: athleteData.firstName,
         lastName: athleteData.lastName,
         email:

@@ -1,52 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-
-interface TrainerData {
-  id: string
-  user: {
-    name: string
-    email: string
-  }
-  totalAthletes: number
-  athletes: Array<{
-    id: string
-    firstName: string
-    lastName: string
-    email: string
-  }>
-  todaySessions: Array<{
-    id: string
-    scheduledAt: string
-    completed: boolean
-    athlete: {
-      firstName: string
-      lastName: string
-    }
-  }>
-  todayStats: {
-    total: number
-    completed: number
-    remaining: number
-  }
-}
-
-interface SessionData {
-  id: string
-  scheduledAt: string
-  completed: boolean
-  cancelled: boolean
-  athlete: {
-    firstName: string
-    lastName: string
-  }
-  trainer: {
-    user: {
-      name: string
-    }
-  }
-}
 
 interface WalkIn {
   id: string
@@ -63,148 +19,81 @@ interface UnassignedAthlete {
   createdAt: string
 }
 
-type CalendarView = 'day' | 'week' | 'month'
+interface TrainerOption {
+  id: string
+  user: { name: string }
+}
 
-export default function AdminDashboard() {
-  const [trainers, setTrainers] = useState<TrainerData[]>([])
-  const [sessions, setSessions] = useState<SessionData[]>([])
+const CARDS: {
+  href: string
+  label: string
+  desc: string
+}[] = [
+  {
+    href: '/admin/chat',
+    label: 'Chat /\nSchedule',
+    desc: 'Talk to the scheduler',
+  },
+  { href: '/admin/calendar', label: 'Calendar', desc: 'See the week' },
+  { href: '/admin/trainers', label: 'Trainers', desc: 'Hours & roster' },
+  { href: '/admin/athletes', label: 'Athletes', desc: 'Members & assignments' },
+]
+
+export default function AdminHome() {
+  const router = useRouter()
   const [user, setUser] = useState<{ name: string } | null>(null)
   const [walkIns, setWalkIns] = useState<WalkIn[]>([])
-  const [assigningWalkIn, setAssigningWalkIn] = useState<string | null>(null)
-  const [unassignedAthletes, setUnassignedAthletes] = useState<UnassignedAthlete[]>([])
-  const [assigningAthlete, setAssigningAthlete] = useState<string | null>(null)
-  const router = useRouter()
+  const [unassigned, setUnassigned] = useState<UnassignedAthlete[]>([])
+  const [trainers, setTrainers] = useState<TrainerOption[]>([])
+  const [assigning, setAssigning] = useState<string | null>(null)
 
-  // Command input state
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
-
-  // Accordion states
-  const [calendarOpen, setCalendarOpen] = useState(false)
-  const [trainersOpen, setTrainersOpen] = useState(false)
-  const [athletesOpen, setAthletesOpen] = useState(false)
-
-  // Calendar view state
-  const [calendarView, setCalendarView] = useState<CalendarView>('week')
-  const [currentDate, setCurrentDate] = useState(new Date())
-
-  useEffect(() => {
-    fetchUser()
-    fetchTrainers()
-    fetchWalkIns()
-    fetchUnassignedAthletes()
-    fetchSessions()
+  const loadAuxiliary = useCallback(async () => {
+    const [t, w, u] = await Promise.all([
+      fetch('/api/trainers').then((r) => r.json()),
+      fetch('/api/walkins').then((r) => r.json()),
+      fetch('/api/athletes?unassigned=true').then((r) => r.json()),
+    ])
+    if (t.success) setTrainers(t.data)
+    if (w.success) setWalkIns(w.data)
+    if (u.success) setUnassigned(u.data)
   }, [])
 
-  // Refetch sessions when calendar view or date changes
   useEffect(() => {
-    fetchSessions()
-  }, [calendarView, currentDate])
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.success) {
+          router.replace('/login')
+          return
+        }
+        setUser(d.user)
+      })
+  }, [router])
 
-  async function fetchUser() {
-    const res = await fetch('/api/auth/me')
-    const data = await res.json()
-    if (data.success) {
-      setUser(data.user)
-    }
-  }
+  useEffect(() => {
+    loadAuxiliary()
+  }, [loadAuxiliary])
 
-  async function fetchTrainers() {
-    const res = await fetch('/api/trainers')
-    const data = await res.json()
-    if (data.success) {
-      setTrainers(data.data)
-    }
-  }
-
-  async function fetchWalkIns() {
-    const res = await fetch('/api/walkins')
-    const data = await res.json()
-    if (data.success) {
-      setWalkIns(data.data)
-    }
-  }
-
-  async function fetchUnassignedAthletes() {
-    const res = await fetch('/api/athletes?unassigned=true')
-    const data = await res.json()
-    if (data.success) {
-      setUnassignedAthletes(data.data)
-    }
+  async function assignWalkIn(walkInId: string, trainerId: string) {
+    setAssigning(walkInId)
+    await fetch(`/api/walkins/${walkInId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trainerId }),
+    })
+    await loadAuxiliary()
+    setAssigning(null)
   }
 
   async function assignAthlete(athleteId: string, trainerId: string) {
-    setAssigningAthlete(athleteId)
-    try {
-      const res = await fetch(`/api/athletes/${athleteId}/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trainerId }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        fetchUnassignedAthletes()
-        fetchTrainers()
-      }
-    } catch (error) {
-      console.error('Error assigning athlete:', error)
-    } finally {
-      setAssigningAthlete(null)
-    }
-  }
-
-  async function fetchSessions() {
-    const { start, end } = getDateRange()
-    const res = await fetch(`/api/sessions?startDate=${start.toISOString()}&endDate=${end.toISOString()}`)
-    const data = await res.json()
-    if (data.success) {
-      setSessions(data.data)
-    }
-  }
-
-  function getDateRange() {
-    const start = new Date(currentDate)
-    const end = new Date(currentDate)
-
-    if (calendarView === 'day') {
-      start.setHours(0, 0, 0, 0)
-      end.setHours(23, 59, 59, 999)
-    } else if (calendarView === 'week') {
-      const dayOfWeek = start.getDay()
-      start.setDate(start.getDate() - dayOfWeek)
-      start.setHours(0, 0, 0, 0)
-      end.setDate(start.getDate() + 6)
-      end.setHours(23, 59, 59, 999)
-    } else {
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
-      end.setMonth(end.getMonth() + 1)
-      end.setDate(0)
-      end.setHours(23, 59, 59, 999)
-    }
-
-    return { start, end }
-  }
-
-  async function assignWalkIn(walkInId: string, trainerId: string) {
-    setAssigningWalkIn(walkInId)
-    try {
-      const res = await fetch(`/api/walkins/${walkInId}/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trainerId }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        fetchWalkIns()
-        fetchTrainers()
-      }
-    } catch (error) {
-      console.error('Error assigning walk-in:', error)
-    } finally {
-      setAssigningWalkIn(null)
-    }
+    setAssigning(athleteId)
+    await fetch(`/api/athletes/${athleteId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trainerId }),
+    })
+    await loadAuxiliary()
+    setAssigning(null)
   }
 
   async function handleLogout() {
@@ -212,385 +101,162 @@ export default function AdminDashboard() {
     router.push('/login')
   }
 
-  async function handleCommand() {
-    if (!input.trim()) return
-
-    setLoading(true)
-    setResult(null)
-
-    try {
-      const res = await fetch('/api/admin/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input, execute: true }),
-      })
-      const data = await res.json()
-
-      if (data.success) {
-        const message = data.execution?.message || data.parsed?.humanReadableSummary || 'Done!'
-        setResult({ success: true, message })
-        setInput('')
-
-        // Refresh data
-        fetchTrainers()
-        fetchWalkIns()
-        fetchUnassignedAthletes()
-
-        // Check if a session was created and adjust calendar view
-        // The results array contains created/updated records
-        const results = data.execution?.results
-        if (results && results.length > 0) {
-          // Look for any session in results that has scheduledAt
-          const sessionResult = results.find((r: { scheduledAt?: string }) => r?.scheduledAt)
-          if (sessionResult?.scheduledAt) {
-            const newDate = new Date(sessionResult.scheduledAt)
-            // Update current date to show the new session
-            setCurrentDate(newDate)
-            // Open calendar accordion to show the result
-            setCalendarOpen(true)
-          }
-        }
-
-        // Always refresh sessions after any command
-        fetchSessions()
-      } else {
-        setResult({
-          success: false,
-          message: data.error || data.parsed?.clarificationNeeded || 'Command failed'
-        })
-      }
-    } catch (error) {
-      console.error('Command error:', error)
-      setResult({ success: false, message: 'An error occurred' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Get all athletes from all trainers
-  const allAthletes = trainers.flatMap(t =>
-    t.athletes?.map(a => ({ ...a, trainerName: t.user.name })) || []
-  )
-
-  // Group sessions by date for calendar display
-  function groupSessionsByDate(sessions: SessionData[]) {
-    const grouped: Record<string, SessionData[]> = {}
-    sessions.forEach(session => {
-      const date = new Date(session.scheduledAt).toDateString()
-      if (!grouped[date]) grouped[date] = []
-      grouped[date].push(session)
-    })
-    return grouped
-  }
-
-  function formatTime(dateStr: string) {
-    return new Date(dateStr).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  }
-
-  function formatDateHeader() {
-    if (calendarView === 'day') {
-      return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-    } else if (calendarView === 'week') {
-      const { start, end } = getDateRange()
-      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-    } else {
-      return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    }
-  }
-
-  function navigateDate(direction: 'prev' | 'next') {
-    const newDate = new Date(currentDate)
-    if (calendarView === 'day') {
-      newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1))
-    } else if (calendarView === 'week') {
-      newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-    } else {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-    }
-    setCurrentDate(newDate)
-  }
-
-  const groupedSessions = groupSessionsByDate(sessions)
-
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-black text-white p-3 md:p-4">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <h1 className="text-lg md:text-xl font-black tracking-tight">DSC ADMIN</h1>
-          <div className="flex items-center gap-2 md:gap-4">
-            <span className="text-xs md:text-sm hidden sm:inline">{user?.name}</span>
-            <button
-              onClick={handleLogout}
-              className="text-xs md:text-sm bg-white text-black px-2 md:px-3 py-1 rounded font-medium"
-            >
-              Logout
-            </button>
-          </div>
+    <div className="min-h-screen bg-white flex flex-col">
+      {/* Top — wordmark + user */}
+      <header className="px-4 pt-6 pb-4 flex items-center justify-between">
+        <div className="flex items-baseline gap-3">
+          <span className="dsc-headline text-2xl md:text-3xl text-black">DSC</span>
+          <span className="dsc-label text-black/40 hidden sm:inline">
+            Dallas Sports Collective
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="dsc-label text-black/60 hidden sm:inline">
+            {user?.name}
+          </span>
+          <button
+            onClick={handleLogout}
+            className="dsc-label text-black/60 hover:text-black"
+          >
+            Log out
+          </button>
         </div>
       </header>
 
-      {/* Walk-ins Alert */}
-      {walkIns.length > 0 && (
-        <div className="bg-orange-500 text-white p-3 md:p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="font-bold mb-2 text-sm md:text-base">WALK-INS ({walkIns.length})</div>
-            <div className="space-y-2">
-              {walkIns.map((walkIn) => (
-                <div key={walkIn.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/10 rounded p-2 gap-2">
-                  <span className="text-sm md:text-base">{walkIn.name} - {new Date(walkIn.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  <select
-                    className="bg-white text-black rounded px-2 py-1 text-xs md:text-sm"
-                    defaultValue=""
-                    onChange={(e) => e.target.value && assignWalkIn(walkIn.id, e.target.value)}
-                    disabled={assigningWalkIn === walkIn.id}
-                  >
-                    <option value="" disabled>Assign...</option>
-                    {trainers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.user.name}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Unassigned Athletes Alert */}
-      {unassignedAthletes.length > 0 && (
-        <div className="bg-blue-600 text-white p-3 md:p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="font-bold mb-2 text-sm md:text-base">NEW REGISTRATIONS ({unassignedAthletes.length})</div>
-            <div className="space-y-2">
-              {unassignedAthletes.map((athlete) => (
-                <div key={athlete.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/10 rounded p-2 gap-2">
-                  <span className="text-sm md:text-base">
-                    {athlete.firstName} {athlete.lastName} - {athlete.email}
-                    <span className="ml-2 text-xs opacity-75">
-                      {new Date(athlete.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                    </span>
-                  </span>
-                  <select
-                    className="bg-white text-black rounded px-2 py-1 text-xs md:text-sm"
-                    defaultValue=""
-                    onChange={(e) => e.target.value && assignAthlete(athlete.id, e.target.value)}
-                    disabled={assigningAthlete === athlete.id}
-                  >
-                    <option value="" disabled>Assign trainer...</option>
-                    {trainers.map((t) => (
-                      <option key={t.id} value={t.id}>{t.user.name}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="max-w-4xl mx-auto py-4 md:py-8 px-3 md:px-4">
-        {/* Command Input */}
-        <div className="mb-4 md:mb-8">
-          <div className="flex gap-2 md:gap-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !loading) {
-                  handleCommand()
-                }
-              }}
-              placeholder="Type a command..."
-              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-black rounded-lg text-sm md:text-lg text-black placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-black"
-              disabled={loading}
+      {/* Alerts row */}
+      {(walkIns.length > 0 || unassigned.length > 0) && (
+        <div className="px-4 space-y-2 pb-2">
+          {walkIns.length > 0 && (
+            <AlertBox
+              tone="orange"
+              label={`Walk-ins · ${walkIns.length}`}
+              rows={walkIns.map((w) => ({
+                id: w.id,
+                primary: w.name,
+                secondary: new Date(w.checkInTime).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+                onAssign: (tid) => assignWalkIn(w.id, tid),
+                pending: assigning === w.id,
+              }))}
+              trainers={trainers}
             />
-            <button
-              onClick={handleCommand}
-              disabled={loading || !input.trim()}
-              className="px-4 md:px-6 py-2 md:py-3 bg-black text-white font-bold rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+          )}
+          {unassigned.length > 0 && (
+            <AlertBox
+              tone="blue"
+              label={`New registrations · ${unassigned.length}`}
+              rows={unassigned.map((a) => ({
+                id: a.id,
+                primary: `${a.firstName} ${a.lastName}`,
+                secondary: a.email,
+                onAssign: (tid) => assignAthlete(a.id, tid),
+                pending: assigning === a.id,
+              }))}
+              trainers={trainers}
+            />
+          )}
+        </div>
+      )}
+
+      {/* The launcher: 4 cards */}
+      <section className="px-4 pt-2 pb-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 max-w-3xl mx-auto">
+          {CARDS.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              className="group block bg-black/[0.04] hover:bg-black/[0.07] rounded-3xl p-4 md:p-7 aspect-square flex flex-col justify-between transition-colors overflow-hidden"
             >
-              {loading ? '...' : 'Go'}
-            </button>
+              <div className="dsc-label text-black/40 group-hover:text-black/60 break-words">
+                {c.desc}
+              </div>
+              <div className="dsc-headline text-2xl sm:text-3xl md:text-5xl text-black whitespace-pre-line leading-[0.9] break-words">
+                {c.label}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Gym photo footer */}
+      <div className="mt-auto px-4 pb-4">
+        <div className="max-w-3xl mx-auto rounded-3xl overflow-hidden aspect-[16/9] md:aspect-[21/9] bg-black/5">
+          <img
+            src="/checkin-bg.jpg"
+            alt="Dallas Sports Collective"
+            className="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface AlertRow {
+  id: string
+  primary: string
+  secondary?: string
+  pending?: boolean
+  onAssign: (trainerId: string) => void
+}
+
+function AlertBox({
+  tone,
+  label,
+  rows,
+  trainers,
+}: {
+  tone: 'orange' | 'blue'
+  label: string
+  rows: AlertRow[]
+  trainers: TrainerOption[]
+}) {
+  const cls = {
+    orange: { bg: 'bg-orange-50', border: 'border-orange-200', dot: 'bg-orange-500', text: 'text-orange-900' },
+    blue: { bg: 'bg-blue-50', border: 'border-blue-200', dot: 'bg-blue-500', text: 'text-blue-900' },
+  }[tone]
+
+  return (
+    <div
+      className={`px-4 py-2.5 rounded-2xl border ${cls.bg} ${cls.border} max-w-3xl mx-auto`}
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
+        <span className={`dsc-label ${cls.text}`}>{label}</span>
+      </div>
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div
+            key={r.id}
+            className="flex items-center justify-between gap-2 text-sm text-black"
+          >
+            <span className="truncate">
+              {r.primary}
+              {r.secondary && (
+                <span className="ml-2 text-xs text-black/50">{r.secondary}</span>
+              )}
+            </span>
+            <select
+              className="bg-white border border-black/20 text-black rounded px-2 py-0.5 text-xs"
+              defaultValue=""
+              onChange={(e) => e.target.value && r.onAssign(e.target.value)}
+              disabled={r.pending}
+            >
+              <option value="" disabled>
+                Assign…
+              </option>
+              {trainers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.user.name}
+                </option>
+              ))}
+            </select>
           </div>
-          {result && (
-            <div className={`mt-2 md:mt-3 p-2 md:p-3 rounded-lg text-sm md:text-base ${
-              result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-            }`}>
-              {result.message}
-            </div>
-          )}
-        </div>
-
-        {/* CALENDAR Accordion */}
-        <div className="border-b-4 border-black">
-          <button
-            onClick={() => setCalendarOpen(!calendarOpen)}
-            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
-          >
-            <span className="text-xl md:text-3xl font-black tracking-tight text-black">CALENDAR</span>
-            <span className="text-xl md:text-3xl font-light text-black">{calendarOpen ? '−' : '+'}</span>
-          </button>
-
-          {calendarOpen && (
-            <div className="px-3 md:px-4 pb-4 md:pb-6">
-              {/* View Toggle */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-                <div className="flex gap-1 md:gap-2">
-                  {(['day', 'week', 'month'] as CalendarView[]).map((view) => (
-                    <button
-                      key={view}
-                      onClick={() => setCalendarView(view)}
-                      className={`px-2 md:px-4 py-1 md:py-2 text-xs md:text-sm font-medium rounded ${
-                        calendarView === view
-                          ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {view.charAt(0).toUpperCase() + view.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 md:gap-4">
-                  <button onClick={() => navigateDate('prev')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base text-black">
-                    &larr;
-                  </button>
-                  <span className="font-medium min-w-[120px] md:min-w-[200px] text-center text-xs md:text-base text-black">{formatDateHeader()}</span>
-                  <button onClick={() => navigateDate('next')} className="p-1 md:p-2 hover:bg-gray-100 rounded text-sm md:text-base text-black">
-                    &rarr;
-                  </button>
-                  <button
-                    onClick={() => setCurrentDate(new Date())}
-                    className="px-2 md:px-3 py-1 text-xs md:text-sm bg-gray-100 text-black rounded hover:bg-gray-200"
-                  >
-                    Today
-                  </button>
-                </div>
-              </div>
-
-              {/* Sessions List */}
-              <div className="space-y-3 md:space-y-4">
-                {Object.keys(groupedSessions).length === 0 ? (
-                  <p className="text-gray-500 py-6 md:py-8 text-center text-sm md:text-base">No sessions in this period</p>
-                ) : (
-                  Object.entries(groupedSessions)
-                    .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
-                    .map(([date, daySessions]) => (
-                      <div key={date} className="border rounded-lg overflow-hidden">
-                        <div className="bg-gray-100 px-3 md:px-4 py-2 font-medium text-sm md:text-base text-black">
-                          {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                        </div>
-                        <div className="divide-y">
-                          {daySessions
-                            .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-                            .map((session) => (
-                              <div key={session.id} className="px-3 md:px-4 py-2 md:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4">
-                                <div className="flex flex-wrap items-center gap-2 md:gap-4">
-                                  <span className="font-mono text-xs md:text-sm w-16 md:w-20 text-black">{formatTime(session.scheduledAt)}</span>
-                                  <span className="font-medium text-sm md:text-base text-black">
-                                    {session.athlete.firstName} {session.athlete.lastName}
-                                  </span>
-                                  <span className="text-gray-700 text-xs md:text-sm">
-                                    with {session.trainer.user.name}
-                                  </span>
-                                </div>
-                                <span className={`text-xs md:text-sm font-medium ${
-                                  session.cancelled ? 'text-red-600' :
-                                  session.completed ? 'text-green-600' : 'text-gray-600'
-                                }`}>
-                                  {session.cancelled ? 'Cancelled' : session.completed ? 'Done' : 'Scheduled'}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* TRAINERS Accordion */}
-        <div className="border-b-4 border-black">
-          <button
-            onClick={() => setTrainersOpen(!trainersOpen)}
-            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
-          >
-            <span className="text-xl md:text-3xl font-black tracking-tight text-black">TRAINERS</span>
-            <span className="text-xl md:text-3xl font-light text-black">{trainersOpen ? '−' : '+'}</span>
-          </button>
-
-          {trainersOpen && (
-            <div className="px-3 md:px-4 pb-4 md:pb-6">
-              <div className="space-y-3">
-                {trainers.map((trainer) => (
-                  <div key={trainer.id} className="border rounded-lg p-3 md:p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-bold text-base md:text-lg text-black">{trainer.user.name}</div>
-                        <div className="text-gray-700 text-xs md:text-sm">{trainer.user.email}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl md:text-2xl font-bold text-black">{trainer.totalAthletes}</div>
-                        <div className="text-gray-700 text-[10px] md:text-xs">athletes</div>
-                      </div>
-                    </div>
-                    {trainer.todaySessions.length > 0 && (
-                      <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t">
-                        <div className="text-xs md:text-sm text-gray-700 mb-2">Today&apos;s Sessions</div>
-                        <div className="flex flex-wrap gap-1 md:gap-2">
-                          {trainer.todaySessions.map((session) => (
-                            <span
-                              key={session.id}
-                              className={`text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded ${
-                                session.completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                              }`}
-                            >
-                              {session.athlete.firstName} {formatTime(session.scheduledAt)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ATHLETES Accordion */}
-        <div className="border-b-4 border-black">
-          <button
-            onClick={() => setAthletesOpen(!athletesOpen)}
-            className="w-full flex justify-between items-center py-4 md:py-6 px-3 md:px-4"
-          >
-            <span className="text-xl md:text-3xl font-black tracking-tight text-black">ATHLETES</span>
-            <span className="text-xl md:text-3xl font-light text-black">{athletesOpen ? '−' : '+'}</span>
-          </button>
-
-          {athletesOpen && (
-            <div className="px-3 md:px-4 pb-4 md:pb-6">
-              <div className="mb-3 md:mb-4 text-gray-700 text-sm md:text-base">{allAthletes.length} athletes total</div>
-              <div className="space-y-2">
-                {allAthletes.map((athlete) => (
-                  <div key={athlete.id} className="border rounded-lg p-2 md:p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                    <div>
-                      <div className="font-medium text-sm md:text-base text-black">{athlete.firstName} {athlete.lastName}</div>
-                      <div className="text-gray-700 text-xs md:text-sm">{athlete.email}</div>
-                    </div>
-                    <div className="text-gray-700 text-xs md:text-sm">
-                      {athlete.trainerName}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+        ))}
+      </div>
     </div>
   )
 }

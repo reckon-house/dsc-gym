@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 // GET /api/athletes - List athletes
 export async function GET(request: NextRequest) {
@@ -36,6 +37,12 @@ export async function GET(request: NextRequest) {
         _count: {
           select: {
             sessions: true,
+          },
+        },
+        trainer: {
+          select: {
+            id: true,
+            user: { select: { name: true } },
           },
         },
       },
@@ -97,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     const athlete = await db.athlete.create({
       data: {
+        gymId: DEFAULT_GYM_ID,
         firstName,
         lastName,
         email: athleteEmail,
