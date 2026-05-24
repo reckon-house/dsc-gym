@@ -60,6 +60,7 @@ export function buildVerificationEmail(args: {
   firstName: string
   url: string
   logoUrl?: string
+  heroImageUrl?: string
 }): { subject: string; text: string; html: string } {
   const subject = 'Confirm your DSC account'
 
@@ -78,6 +79,7 @@ This link expires in 24 hours. If you didn't sign up, ignore this email.
     preview: 'Tap the button to activate your DSC account.',
     headerLabel: 'Dallas Sports Collective',
     logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
     headline: 'Welcome to DSC',
     intro: `Hi ${args.firstName} — you're one tap away from being set up. Confirm your email to activate your account.`,
     buttonLabel: 'Confirm my email',
@@ -94,6 +96,7 @@ interface EmailLayoutArgs {
   preview: string
   headerLabel: string
   logoUrl?: string
+  heroImageUrl?: string
   headline: string
   intro: string
   buttonLabel: string
@@ -156,6 +159,20 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
             <!-- Card -->
             <tr>
               <td style="background:${surface};border-radius:24px;padding:0;overflow:hidden;">
+
+                ${args.heroImageUrl ? `
+                <!-- Hero image: edge-to-edge inside the card, rounded top corners -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="line-height:0;font-size:0;">
+                      <img src="${escapeAttr(args.heroImageUrl)}"
+                           alt="Dallas Sports Collective"
+                           width="600"
+                           style="display:block;width:100%;max-width:600px;height:auto;border-top-left-radius:24px;border-top-right-radius:24px;" />
+                    </td>
+                  </tr>
+                </table>
+                ` : ''}
 
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>

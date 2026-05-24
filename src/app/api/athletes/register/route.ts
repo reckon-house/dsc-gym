@@ -91,11 +91,13 @@ export async function POST(request: NextRequest) {
     // Brand logo for the email header. Env override lets us point at a CDN
     // or pin to a specific deploy URL without code changes.
     const logoUrl = process.env.EMAIL_LOGO_URL ?? `${origin}/logo-mark.png`
+    const heroImageUrl = process.env.EMAIL_HERO_URL ?? `${origin}/email-hero.jpg`
 
     const email_content = buildVerificationEmail({
       firstName: athlete.firstName,
       url: verificationUrl,
       logoUrl,
+      heroImageUrl,
     })
     const emailResult = await sendEmail({
       to: normalizedEmail,
