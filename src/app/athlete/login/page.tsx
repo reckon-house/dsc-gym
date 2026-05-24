@@ -54,7 +54,7 @@ function LoginInner() {
 
       <div className="flex-1 flex items-stretch px-4 pb-4">
         <div
-          className="relative w-full rounded-3xl overflow-hidden"
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end"
           style={{
             backgroundImage: 'url(/images/landing-page-bg.jpg)',
             backgroundSize: 'cover',
@@ -62,51 +62,44 @@ function LoginInner() {
             minHeight: '70vh',
           }}
         >
-          {/* Gradient to bottom for legibility */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
+          {/* Stronger gradient at the bottom so form fields are legible */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
 
-          <div className="relative h-full flex flex-col justify-end p-4 md:p-6">
-            <div className="mb-4">
+          <div className="relative p-6 pb-8 space-y-6">
+            <div>
               <div className="dsc-label text-white/70 mb-2">Athlete</div>
-              <h2 className="dsc-headline text-4xl md:text-5xl text-white leading-[0.85]">
+              <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">
                 Welcome
                 <br />
                 back.
               </h2>
             </div>
 
-            <form
-              onSubmit={handleSubmit}
-              className="bg-white rounded-2xl p-5 space-y-3 shadow-2xl"
-            >
-              <label className="block">
-                <div className="dsc-label text-black/50 mb-1">Email</div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
-                />
-              </label>
-              <label className="block">
-                <div className="dsc-label text-black/50 mb-1">Password</div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  className="w-full h-11 px-4 bg-black/5 rounded-xl text-[15px] text-black placeholder:text-black/40 focus:outline-none focus:bg-black/[0.07]"
-                />
-              </label>
+            <form onSubmit={handleSubmit} className="space-y-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="Email"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                placeholder="Password"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
 
               {error && (
-                <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">
+                <div className="rounded-2xl bg-red-500/20 border border-red-300/40 text-red-100 px-4 py-2 text-sm backdrop-blur">
                   {error.message}
                   {error.needsVerification && (
-                    <div className="mt-1 text-xs">
+                    <div className="mt-1 text-xs opacity-80">
                       Check your inbox for the confirmation link.
                     </div>
                   )}
@@ -116,14 +109,14 @@ function LoginInner() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-12 bg-black text-white rounded-full font-semibold disabled:bg-black/30"
+                className="w-full h-14 bg-black text-white rounded-full dsc-headline text-lg disabled:bg-black/40 mt-3"
               >
-                {loading ? 'Signing in…' : 'Sign in'}
+                {loading ? 'SIGNING IN…' : 'SIGN IN'}
               </button>
 
-              <p className="text-center text-sm text-black/50 pt-1">
+              <p className="text-center text-sm text-white/70 pt-2">
                 New to DSC?{' '}
-                <Link href="/athlete/register" className="underline text-black">
+                <Link href="/athlete/register" className="underline text-white">
                   Register
                 </Link>
               </p>
