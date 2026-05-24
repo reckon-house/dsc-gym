@@ -114,6 +114,25 @@ body {
   color: var(--foreground);
   font-family: 'Avenir Next', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Brand accent for native controls (date pickers, checkboxes, radios,
+     range, AM/PM toggle, scroll indicators). Tailwind's accent-*
+     utilities still override per-element. */
+  accent-color: #000;
+  color-scheme: light;
+}
+
+/* Native date/time picker tweaks where browsers allow it. */
+input[type='datetime-local']::-webkit-calendar-picker-indicator,
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+input[type='datetime-local']::-webkit-calendar-picker-indicator:hover,
+input[type='date']::-webkit-calendar-picker-indicator:hover,
+input[type='time']::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 /* DSC brand: small-caps mono label.
