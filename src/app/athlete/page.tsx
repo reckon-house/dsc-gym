@@ -5,7 +5,7 @@ import Image from 'next/image'
 
 export default function AthleteLanding() {
   return (
-    <div className="min-h-screen bg-white flex flex-col w-full max-w-5xl mx-auto">
+    <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 md:px-6 py-5 flex items-center justify-between">
         <Link href="/athlete" aria-label="DSC home" className="block">
           <Image
@@ -35,7 +35,7 @@ export default function AthleteLanding() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
 
           <div className="relative p-6 pb-8 md:p-10 md:pb-10">
-            <div className="w-full max-w-md space-y-6">
+            <div className="w-full max-w-md mx-auto space-y-6">
               <div className="dsc-enter">
                 <div className="dsc-label text-white/70 mb-2">
                   Dallas Sports Collective

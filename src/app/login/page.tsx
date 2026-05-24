@@ -46,7 +46,7 @@ export default function LoginPage() {
   const isDev = process.env.NODE_ENV !== 'production'
 
   return (
-    <div className="min-h-screen bg-white flex flex-col w-full max-w-5xl mx-auto">
+    <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 md:px-6 py-5 flex items-center justify-between">
         <Link href="/login" aria-label="DSC home" className="block">
           <Image src="/logo-mark.png" alt="DSC" width={40} height={40} priority />
@@ -71,7 +71,7 @@ export default function LoginPage() {
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
 
-          <div className="relative p-6 pb-8 md:p-10 md:pb-10 w-full max-w-md space-y-6">
+          <div className="relative p-6 pb-8 md:p-10 md:pb-10 w-full max-w-md mx-auto space-y-6">
             <div className="dsc-enter">
               <div className="dsc-label text-white/70 mb-2">Staff</div>
               <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">

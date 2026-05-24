@@ -69,7 +69,7 @@ export default function AthleteRegister() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-white flex flex-col w-full max-w-5xl mx-auto">
+      <div className="min-h-screen bg-white flex flex-col">
         <header className="px-4 md:px-6 py-5">
           <HeaderLogo />
         </header>
@@ -117,7 +117,7 @@ export default function AthleteRegister() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col w-full max-w-5xl mx-auto">
+    <div className="min-h-screen bg-white flex flex-col">
       <header className="px-4 md:px-6 py-5 flex items-center justify-between">
         <HeaderLogo />
         <Link href="/athlete/login" className="dsc-label text-black/60 hover:text-black">
@@ -138,7 +138,7 @@ export default function AthleteRegister() {
           {/* Stronger bottom gradient — register form is taller than login */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none" />
 
-          <div className="relative p-6 pb-8 md:p-10 md:pb-10 w-full max-w-md space-y-5">
+          <div className="relative p-6 pb-8 md:p-10 md:pb-10 w-full max-w-md mx-auto space-y-5">
             <div className="dsc-enter">
               <div className="dsc-label text-white/70 mb-2">New athlete</div>
               <h2 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85]">
