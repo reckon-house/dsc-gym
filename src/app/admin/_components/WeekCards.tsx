@@ -116,21 +116,26 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
         </div>
       </div>
 
-      {/* Day cards stack */}
-      <div className="px-4 pb-6 space-y-3">
+      {/* Day cards — 2-col grid; today spans full width to stay prominent. */}
+      <div className="px-4 pb-6 grid grid-cols-2 gap-3">
         {days.map((d) => {
           const key = d.toDateString()
           const list = byDay[key] ?? []
           const isToday = key === todayKey
           const count = list.length
-          const preview = list.slice(0, 3)
+          // Smaller cards = tighter preview. Today spans full width so it
+          // can still show more.
+          const previewLimit = isToday ? 3 : 2
+          const preview = list.slice(0, previewLimit)
           const more = Math.max(0, count - preview.length)
 
           return (
             <Link
               key={key}
               href={hrefFor(d)}
-              className={`block rounded-3xl p-5 md:p-6 transition-colors ${
+              className={`block rounded-3xl p-4 md:p-5 transition-colors ${
+                isToday ? 'col-span-2' : ''
+              } ${
                 isToday
                   ? 'bg-black text-white hover:bg-black/90'
                   : 'bg-black/[0.04] hover:bg-black/[0.07] text-black'
@@ -143,19 +148,27 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
                   >
                     {DAY_NAMES[d.getDay()]}
                   </div>
-                  <div className="dsc-headline text-4xl md:text-5xl leading-none mt-1">
+                  <div
+                    className={`dsc-headline leading-none mt-1 ${
+                      isToday ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl'
+                    }`}
+                  >
                     {d.getDate()}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="dsc-headline text-2xl md:text-3xl leading-none">
+                  <div
+                    className={`dsc-headline leading-none ${
+                      isToday ? 'text-2xl md:text-3xl' : 'text-xl md:text-2xl'
+                    }`}
+                  >
                     {count > 0 ? count : '—'}
                   </div>
                   {count > 0 && (
                     <div
-                      className={`dsc-label ${isToday ? 'text-white/60' : 'text-black/50'} mt-1`}
+                      className={`dsc-label mt-1 ${isToday ? 'text-white/60' : 'text-black/50'}`}
                     >
-                      session{count === 1 ? '' : 's'}
+                      {count === 1 ? 'session' : 'sessions'}
                     </div>
                   )}
                 </div>
@@ -166,19 +179,19 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
                   {preview.map((s) => (
                     <div
                       key={s.id}
-                      className={`rounded-2xl px-4 py-2 flex items-baseline justify-between gap-3 ${
+                      className={`rounded-2xl px-3 py-1.5 flex items-baseline justify-between gap-2 ${
                         isToday ? 'bg-white text-black' : 'bg-black text-white'
                       } ${s.cancelled ? 'opacity-40 line-through' : ''}`}
                     >
-                      <div className="flex items-baseline gap-3 min-w-0">
-                        <span className="font-mono text-xs opacity-75 shrink-0">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-mono text-[10px] opacity-75 shrink-0">
                           {fmtTime(s.scheduledAt)}
                         </span>
-                        <span className="font-semibold truncate">
+                        <span className="font-semibold text-xs truncate">
                           {s.athleteName}
                         </span>
                       </div>
-                      <span className="dsc-label opacity-60 shrink-0">
+                      <span className="dsc-label opacity-60 shrink-0 text-[10px]">
                         {s.trainerName.split(' ')[0]}
                       </span>
                     </div>
