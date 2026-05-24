@@ -5,7 +5,7 @@ import Image from 'next/image'
 
 export default function AthleteLanding() {
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col w-full max-w-md mx-auto">
       <header className="px-4 py-5 flex items-center justify-between">
         <Link href="/athlete" aria-label="DSC home" className="block">
           <Image

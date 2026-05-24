@@ -69,7 +69,7 @@ export default function AthleteRegister() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-white flex flex-col">
+      <div className="min-h-screen bg-white flex flex-col w-full max-w-md mx-auto">
         <header className="px-4 py-5">
           <HeaderLogo />
         </header>
@@ -117,7 +117,7 @@ export default function AthleteRegister() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col w-full max-w-md mx-auto">
       <header className="px-4 py-5 flex items-center justify-between">
         <HeaderLogo />
         <Link href="/athlete/login" className="dsc-label text-black/60 hover:text-black">

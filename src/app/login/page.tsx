@@ -46,7 +46,7 @@ export default function LoginPage() {
   const isDev = process.env.NODE_ENV !== 'production'
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col w-full max-w-md mx-auto">
       <header className="px-4 py-5 flex items-center justify-between">
         <Link href="/login" aria-label="DSC home" className="block">
           <Image src="/logo-mark.png" alt="DSC" width={40} height={40} priority />
