@@ -192,6 +192,23 @@ export async function POST(request: NextRequest) {
       assistantBlocks = resp.content
       stopReason = resp.stop_reason
 
+      // Cache visibility — logged to Vercel logs so we can verify the
+      // ephemeral cache is doing its job. cache_read_input_tokens > 0
+      // on subsequent turns = the static + tools prefix is being reused.
+      if (resp.usage) {
+        const u = resp.usage as unknown as {
+          input_tokens?: number
+          output_tokens?: number
+          cache_creation_input_tokens?: number
+          cache_read_input_tokens?: number
+        }
+        console.log(
+          `[chat] tokens — input=${u.input_tokens ?? 0} output=${u.output_tokens ?? 0} ` +
+            `cache_write=${u.cache_creation_input_tokens ?? 0} ` +
+            `cache_read=${u.cache_read_input_tokens ?? 0}`
+        )
+      }
+
       // Persist the assistant turn (including any tool_use blocks).
       await db.chatMessage.create({
         data: {

@@ -441,6 +441,10 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
       },
       required: ['athleteId', 'dayOfWeek', 'startMinute'],
     },
+    // cache_control on the LAST tool caches every tool definition up to
+    // and including this one. Tools are huge (~5k tokens) and rarely
+    // change, so caching them is the biggest single cost win.
+    cache_control: { type: 'ephemeral' },
   },
 ]
 
