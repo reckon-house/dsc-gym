@@ -20,10 +20,14 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: Record<string, unknown> = {}
 
-    // Support unassigned filter (admin only)
+    // Support unassigned filter (admin only). Only show athletes who
+    // actually finished registration (emailVerified=true). Unverified
+    // ones are abandoned signups, not real members.
     const unassigned = searchParams.get('unassigned')
     if (unassigned === 'true' && session.role === 'ADMIN') {
       where.trainerId = null
+      where.emailVerified = true
+      where.archived = false
     } else if (session.role === 'TRAINER') {
       // Trainers can only see their own athletes
       where.trainerId = session.trainerId
