@@ -17,6 +17,7 @@ export default function AthleteRegister() {
     firstName: '',
     lastName: '',
     email: '',
+    phone: '',
     password: '',
     legalName: '',
     agreed: false,
@@ -46,6 +47,7 @@ export default function AthleteRegister() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           email: formData.email,
+          phone: formData.phone,
           password: formData.password,
           legalName: formData.legalName || `${formData.firstName} ${formData.lastName}`,
         }),
@@ -174,6 +176,16 @@ export default function AthleteRegister() {
                 required
                 autoComplete="email"
                 placeholder="Email"
+                className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+              />
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                required
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="Mobile number"
                 className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
               <input

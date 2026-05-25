@@ -7,6 +7,7 @@ import {
   generateVerificationToken,
   sendEmail,
 } from '@/lib/email'
+import { normalizePhone } from '@/lib/phone'
 
 // POST /api/athletes/register - Public athlete self-registration.
 // Creates an unverified athlete and sends a verification email.
@@ -25,6 +26,17 @@ export async function POST(request: NextRequest) {
     if (!email) {
       return NextResponse.json(
         { success: false, error: 'Email is required' },
+        { status: 400 }
+      )
+    }
+    const normalizedPhone = normalizePhone(phone ?? '')
+    if (!normalizedPhone) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Mobile number is required — enter a 10-digit US number (e.g. 214-555-0123).',
+        },
         { status: 400 }
       )
     }
@@ -62,7 +74,7 @@ export async function POST(request: NextRequest) {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: normalizedEmail,
-        phone: phone?.trim() || null,
+        phone: normalizedPhone,
         passwordHash,
         trainerId: null,
         emailVerified: false,

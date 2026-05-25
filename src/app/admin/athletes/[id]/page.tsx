@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { formatPhonePretty, smsHref, telHref } from '@/lib/phone'
 
 interface Athlete {
   id: string
@@ -173,9 +174,30 @@ export default function AthleteDetail() {
             <br />
             {athlete.lastName}
           </h1>
-          <div className="text-sm text-black/70">{athlete.email}</div>
+          <div className="text-sm text-black/70">
+            <a
+              href={`mailto:${athlete.email}`}
+              className="hover:text-black"
+            >
+              {athlete.email}
+            </a>
+          </div>
           {athlete.phone && (
-            <div className="text-sm text-black/50 mt-0.5">{athlete.phone}</div>
+            <div className="text-sm text-black/70 mt-1 flex items-center gap-2 flex-wrap">
+              <span>{formatPhonePretty(athlete.phone)}</span>
+              <a
+                href={smsHref(athlete.phone)!}
+                className="dsc-label px-2 py-1 rounded-full bg-black text-white hover:bg-black/80"
+              >
+                Text
+              </a>
+              <a
+                href={telHref(athlete.phone)!}
+                className="dsc-label px-2 py-1 rounded-full bg-black/10 text-black hover:bg-black/15"
+              >
+                Call
+              </a>
+            </div>
           )}
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
             {athlete.trainer ? (
