@@ -333,9 +333,11 @@ function ConnectToAI() {
         Schedule by chat.
       </h2>
       <p className="text-sm text-black/70 mb-4">
-        Add DSC to Claude.ai (or any MCP-compatible client) and ask your AI to
-        check your schedule, find a slot with your trainer, or request a
-        session. The gym owner still approves any new bookings.
+        Add DSC to <strong className="text-black">Claude.ai</strong>,{' '}
+        <strong className="text-black">ChatGPT</strong>, or any MCP-compatible
+        client and ask your AI to check your schedule, find a slot with your
+        trainer, or request a session. The gym owner still approves any new
+        bookings.
       </p>
 
       <div className="rounded-2xl bg-white p-3 mb-3">
@@ -353,24 +355,59 @@ function ConnectToAI() {
         </div>
       </div>
 
-      <details className="text-sm text-black/70">
-        <summary className="cursor-pointer text-black/80 select-none">
-          How to add it to Claude.ai
-        </summary>
-        <ol className="mt-3 pl-5 list-decimal space-y-1.5 text-black/70">
-          <li>In Claude.ai, open Settings → Connectors → Add custom connector.</li>
-          <li>Paste the MCP URL above.</li>
-          <li>
-            Claude will redirect you here to sign in and approve access — same
-            login you&rsquo;re using right now.
-          </li>
-          <li>
-            Once connected, ask Claude things like <em>&ldquo;what&rsquo;s on my
-            schedule next week?&rdquo;</em> or <em>&ldquo;request a session with my
-            trainer Tuesday at 4pm.&rdquo;</em>
-          </li>
-        </ol>
-      </details>
+      <div className="space-y-2">
+        <details className="text-sm text-black/70 group">
+          <summary className="cursor-pointer text-black/80 select-none flex items-center gap-2">
+            <span className="dsc-label text-black/40 group-open:hidden">+</span>
+            <span className="dsc-label text-black/40 hidden group-open:inline">–</span>
+            <span>How to add it to Claude.ai</span>
+          </summary>
+          <ol className="mt-3 pl-5 list-decimal space-y-1.5 text-black/70">
+            <li>
+              In Claude.ai, open <strong>Settings → Connectors → Add custom connector</strong>.
+            </li>
+            <li>Paste the MCP URL above.</li>
+            <li>
+              Claude will redirect you here to sign in and approve access — same
+              login you&rsquo;re using right now.
+            </li>
+            <li>
+              Once connected, ask Claude things like <em>&ldquo;what&rsquo;s on my
+              schedule next week?&rdquo;</em> or <em>&ldquo;request a session with my
+              trainer Tuesday at 4pm.&rdquo;</em>
+            </li>
+          </ol>
+        </details>
+
+        <details className="text-sm text-black/70 group">
+          <summary className="cursor-pointer text-black/80 select-none flex items-center gap-2">
+            <span className="dsc-label text-black/40 group-open:hidden">+</span>
+            <span className="dsc-label text-black/40 hidden group-open:inline">–</span>
+            <span>How to add it to ChatGPT</span>
+          </summary>
+          <ol className="mt-3 pl-5 list-decimal space-y-1.5 text-black/70">
+            <li>
+              You&rsquo;ll need ChatGPT Plus (or higher) — custom connectors aren&rsquo;t on the free tier yet.
+            </li>
+            <li>
+              In ChatGPT, open <strong>Settings → Connectors → Create</strong> (or <em>Add</em>).
+            </li>
+            <li>
+              Paste the MCP URL above. Set the auth type to <strong>OAuth</strong>{' '}
+              if asked.
+            </li>
+            <li>
+              ChatGPT will redirect you here to sign in and approve access — same
+              login you&rsquo;re using right now.
+            </li>
+            <li>
+              In any chat, toggle the DSC connector on, then ask things like{' '}
+              <em>&ldquo;check my DSC schedule&rdquo;</em> or{' '}
+              <em>&ldquo;find me a slot with my trainer Friday morning.&rdquo;</em>
+            </li>
+          </ol>
+        </details>
+      </div>
     </div>
   )
 }
