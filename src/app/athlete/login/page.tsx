@@ -70,9 +70,9 @@ function LoginInner() {
         </Link>
       </header>
 
-      <div className="flex-1 flex items-stretch px-4 pb-4 md:px-0 md:pb-0">
+      <div className="flex-1 flex items-stretch px-4 pb-4 md:px-6 md:pb-6">
         <div
-          className="relative w-full rounded-3xl md:rounded-none overflow-hidden flex flex-col justify-end dsc-image-enter"
+          className="relative w-full rounded-3xl overflow-hidden flex flex-col justify-end dsc-image-enter"
           style={{
             backgroundImage: 'url(/images/landing-page-bg.jpg)',
             backgroundSize: 'cover',
