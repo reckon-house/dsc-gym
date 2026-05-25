@@ -47,52 +47,129 @@ export default function ChatView() {
     loadChat()
   }, [loadChat])
 
-  // While a message is in flight the server may be looping through 10+
-  // tool calls — each round persists an assistant turn to the DB before
-  // the next API call. Poll the GET endpoint so those intermediate
-  // turns appear as they happen instead of waiting for the final POST
-  // response (which can be 30-90s on a bulk request).
-  useEffect(() => {
-    if (!pending) return
-    const interval = setInterval(() => {
-      loadChat().catch(() => {})
-    }, 2000)
-    return () => clearInterval(interval)
-  }, [pending, loadChat])
-
+  // Stream a chat message via SSE. The server emits text_delta events
+  // for each token, tool_use_start for each tool call the model fires,
+  // tool_result when it lands, and a final 'done' event. We render text
+  // into a single in-flight assistant bubble that grows as deltas
+  // arrive — basically the ChatGPT pattern.
   async function sendMessage(text: string) {
     setPending(true)
+    const userId = `tmp-${Date.now()}`
+    const streamId = `stream-${Date.now()}`
     setMessages((m) => [
       ...m,
-      { id: `tmp-${Date.now()}`, role: 'user', content: text },
+      { id: userId, role: 'user', content: text },
+      // Empty assistant bubble we'll fill with deltas.
+      { id: streamId, role: 'assistant', content: '' },
     ])
+
+    const appendDelta = (chunk: string) => {
+      setMessages((msgs) => {
+        const last = msgs[msgs.length - 1]
+        if (last?.id !== streamId) return msgs
+        return [
+          ...msgs.slice(0, -1),
+          { ...last, content: last.content + chunk },
+        ]
+      })
+    }
+
+    const startNewAssistantTurn = () => {
+      // After a tool round finishes, the next assistant deltas should
+      // accrue into a fresh bubble — otherwise commentary across rounds
+      // would smush together.
+      setMessages((msgs) => [
+        ...msgs,
+        { id: `stream-${Date.now()}-${msgs.length}`, role: 'assistant', content: '' },
+      ])
+    }
+
     try {
       const res = await fetch('/api/admin/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       })
-      const data = await res.json()
-      if (!data.success) {
-        setMessages((m) => [
-          ...m,
-          {
-            id: `err-${Date.now()}`,
-            role: 'assistant',
-            content: `Error: ${data.error}`,
-          },
-        ])
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({ error: 'Stream failed' }))
+        appendDelta(`Error: ${data.error}`)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      let currentEvent: string | null = null
+      let firstDeltaInCurrentTurn = true
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // SSE chunks are separated by blank lines. Process complete
+        // events; leave any partial trailing chunk in the buffer.
+        let blankIdx = buffer.indexOf('\n\n')
+        while (blankIdx !== -1) {
+          const raw = buffer.slice(0, blankIdx)
+          buffer = buffer.slice(blankIdx + 2)
+          blankIdx = buffer.indexOf('\n\n')
+
+          // Parse the event block (event: X / data: Y).
+          let evName = ''
+          let evData = ''
+          for (const line of raw.split('\n')) {
+            if (line.startsWith('event: ')) evName = line.slice(7).trim()
+            else if (line.startsWith('data: ')) evData = line.slice(6)
+          }
+          if (!evName) continue
+          currentEvent = evName
+          let payload: Record<string, unknown> = {}
+          try {
+            payload = JSON.parse(evData)
+          } catch {
+            /* ignore malformed */
+          }
+
+          if (evName === 'text_delta') {
+            if (firstDeltaInCurrentTurn) firstDeltaInCurrentTurn = false
+            appendDelta((payload.text as string) ?? '')
+          } else if (evName === 'tool_use_start') {
+            // Drop a subtle inline mark so the user knows a tool is firing.
+            appendDelta(
+              firstDeltaInCurrentTurn
+                ? `_calling \`${payload.name}\`…_\n\n`
+                : `\n\n_calling \`${payload.name}\`…_\n\n`
+            )
+            firstDeltaInCurrentTurn = false
+          } else if (evName === 'tool_result') {
+            // Could surface a tick or x; keeping it quiet for now —
+            // the next round's text deltas will narrate it.
+          } else if (evName === 'assistant_turn_complete') {
+            // Round finished. If there's another tool round coming,
+            // open a fresh bubble so the next narration doesn't merge.
+            if (payload.stopReason === 'tool_use') {
+              startNewAssistantTurn()
+              firstDeltaInCurrentTurn = true
+            }
+          } else if (evName === 'wrap_up_start') {
+            startNewAssistantTurn()
+            firstDeltaInCurrentTurn = true
+          } else if (evName === 'done') {
+            // Server signals end. We'll let the loop finish naturally
+            // via the reader closing.
+          } else if (evName === 'error') {
+            appendDelta(`\n\n**Error:** ${payload.message}`)
+          }
+        }
+        // Tell TS we used currentEvent for something so the var isn't dead.
+        void currentEvent
       }
     } catch (err) {
-      setMessages((m) => [
-        ...m,
-        {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: `Network error: ${String(err)}`,
-        },
-      ])
+      appendDelta(`\n\nNetwork error: ${String(err)}`)
     } finally {
+      // Sync up with the persisted DB state so proposals/draftId are
+      // current and stream-only IDs get replaced with real ones.
       await loadChat()
       setPending(false)
     }

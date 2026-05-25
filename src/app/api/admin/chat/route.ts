@@ -112,238 +112,307 @@ Plain, short, friendly. Jordan is a gym owner, not a computer person. Don't use 
 # Today
 The current date/time will be in the user message context.`
 
+// Helper for building SSE event chunks. Each event is two newlines apart
+// per the protocol. JSON payload keeps things easy on the client.
+function sseChunk(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
 export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession()
-    if (!session || session.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const userMessage: string = body.message ?? ''
-    const reset: boolean = !!body.reset
-
-    if (!userMessage.trim() && !reset) {
-      return NextResponse.json({ success: false, error: 'Empty message' }, { status: 400 })
-    }
-
-    const gymId = DEFAULT_GYM_ID
-
-    // If reset, discard any active draft so a fresh one is created.
-    if (reset) {
-      await db.draftSchedule.updateMany({
-        where: { gymId, status: 'active', createdById: session.userId },
-        data: { status: 'discarded' },
-      })
-    }
-
-    const draftId = await getOrCreateActiveDraft(gymId, session.userId)
-
-    // Persist the user message immediately so the UI can render even
-    // if the model errors out.
-    if (userMessage.trim()) {
-      await db.chatMessage.create({
-        data: { draftId, role: 'user', content: userMessage },
-      })
-    }
-
-    // Load thread history.
-    const history = await db.chatMessage.findMany({
-      where: { draftId },
-      orderBy: { createdAt: 'asc' },
-    })
-
-    // Build messages for Anthropic from stored history.
-    const messages: StoredMessage[] = []
-    for (const m of history) {
-      if (m.role === 'user') {
-        messages.push({ role: 'user', content: [{ type: 'text', text: m.content }] })
-      } else if (m.role === 'assistant') {
-        // toolCalls may contain saved tool_use blocks; we reconstruct.
-        const stored = (m.toolCalls as Anthropic.Messages.ContentBlockParam[] | null) ?? null
-        if (stored) {
-          messages.push({ role: 'assistant', content: stored })
-        } else if (m.content) {
-          messages.push({ role: 'assistant', content: [{ type: 'text', text: m.content }] })
-        }
-      } else if (m.role === 'tool_result') {
-        // Tool results live in a user-role message in Anthropic's API.
-        const stored = (m.toolCalls as Anthropic.Messages.ContentBlockParam[] | null) ?? null
-        if (stored) messages.push({ role: 'user', content: stored })
-      }
-    }
-
-    const staticContext = await loadStaticContext(gymId)
-    const dynamicContext = `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)`
-
-    const anthropic = getAnthropic()
-    const startedAt = Date.now()
-
-    let assistantBlocks: Anthropic.Messages.ContentBlock[] = []
-    let stopReason: string | null = null
-    let round = 0
-
-    while (round < MAX_TOOL_ROUNDS) {
-      // Wall-clock guard. If we're past the time budget, bail out of
-      // the tool loop and fall through to the wrap-up summary turn —
-      // that way the conversation ends cleanly even on giant bulks.
-      if (Date.now() - startedAt > WALL_CLOCK_BUDGET_MS) {
-        console.warn(
-          `[chat] wall-clock budget hit at round ${round} (${Date.now() - startedAt}ms) — wrapping up`
-        )
-        stopReason = 'tool_use' // forces wrap-up branch below
-        break
-      }
-      round++
-      const resp = await anthropic.messages.create({
-        model: MODEL_ID,
-        max_tokens: 4096,
-        system: [
-          {
-            type: 'text',
-            text: SYSTEM_INSTRUCTIONS,
-            cache_control: { type: 'ephemeral' },
-          },
-          {
-            type: 'text',
-            text: staticContext,
-            cache_control: { type: 'ephemeral' },
-          },
-          { type: 'text', text: dynamicContext },
-        ],
-        tools: SCHEDULING_TOOLS,
-        messages: messages as Anthropic.Messages.MessageParam[],
-      })
-
-      assistantBlocks = resp.content
-      stopReason = resp.stop_reason
-
-      // Cache visibility — logged to Vercel logs so we can verify the
-      // ephemeral cache is doing its job. cache_read_input_tokens > 0
-      // on subsequent turns = the static + tools prefix is being reused.
-      if (resp.usage) {
-        const u = resp.usage as unknown as {
-          input_tokens?: number
-          output_tokens?: number
-          cache_creation_input_tokens?: number
-          cache_read_input_tokens?: number
-        }
-        console.log(
-          `[chat] tokens — input=${u.input_tokens ?? 0} output=${u.output_tokens ?? 0} ` +
-            `cache_write=${u.cache_creation_input_tokens ?? 0} ` +
-            `cache_read=${u.cache_read_input_tokens ?? 0}`
-        )
-      }
-
-      // Persist the assistant turn (including any tool_use blocks).
-      await db.chatMessage.create({
-        data: {
-          draftId,
-          role: 'assistant',
-          content: extractText(assistantBlocks),
-          toolCalls: assistantBlocks as unknown as object,
-        },
-      })
-
-      // Append to in-memory messages so the next round sees it.
-      messages.push({
-        role: 'assistant',
-        content: assistantBlocks as unknown as Anthropic.Messages.ContentBlockParam[],
-      })
-
-      if (stopReason !== 'tool_use') break
-
-      // Dispatch every tool call and collect results.
-      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
-      for (const block of assistantBlocks) {
-        if (block.type !== 'tool_use') continue
-        try {
-          const result = await dispatchTool(block.name, block.input, {
-            gymId,
-            draftId,
-          })
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          })
-        } catch (err) {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify({ error: String(err) }),
-            is_error: true,
-          })
-        }
-      }
-
-      // Persist tool results (they look like a user-role message to Anthropic).
-      await db.chatMessage.create({
-        data: {
-          draftId,
-          role: 'tool_result',
-          content: '',
-          toolCalls: toolResults as unknown as object,
-        },
-      })
-
-      messages.push({
-        role: 'user',
-        content: toolResults as unknown as Anthropic.Messages.ContentBlockParam[],
-      })
-    }
-
-    // If we exited the loop while the model was still calling tools,
-    // the conversation has a trailing tool_result without a closing
-    // assistant text turn. Run one more API call WITHOUT tools so the
-    // model is forced to produce a final summary instead of more
-    // tool_use blocks. Keeps the persisted draft well-formed for the
-    // next turn.
-    if (stopReason === 'tool_use') {
-      const wrapUp = await anthropic.messages.create({
-        model: MODEL_ID,
-        max_tokens: 1024,
-        system: [
-          { type: 'text', text: SYSTEM_INSTRUCTIONS },
-          { type: 'text', text: staticContext },
-          {
-            type: 'text',
-            text:
-              dynamicContext +
-              '\n\nNote: You hit the per-turn tool-call budget. ' +
-              'Summarize for the owner what got done, what is pending in the draft, ' +
-              'and what still needs to be addressed. Do NOT call any more tools.',
-          },
-        ],
-        // No tools — forces a text turn.
-        messages: messages as Anthropic.Messages.MessageParam[],
-      })
-      const wrapBlocks = wrapUp.content
-      stopReason = wrapUp.stop_reason
-      assistantBlocks = wrapBlocks
-      await db.chatMessage.create({
-        data: {
-          draftId,
-          role: 'assistant',
-          content: extractText(wrapBlocks),
-          toolCalls: wrapBlocks as unknown as object,
-        },
-      })
-    }
-
-    return NextResponse.json({
-      success: true,
-      draftId,
-      assistantText: extractText(assistantBlocks),
-      stopReason,
-    })
-  } catch (error) {
-    console.error('Chat error:', error)
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
-    )
+  // Auth + setup happens synchronously before we open the stream so we
+  // can return a plain JSON error if something is wrong with the request
+  // itself (rather than streaming an error).
+  const session = await getSession()
+  if (!session || session.role !== 'ADMIN') {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
+
+  let body: { message?: string; reset?: boolean }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 })
+  }
+  const userMessage: string = body.message ?? ''
+  const reset: boolean = !!body.reset
+  if (!userMessage.trim() && !reset) {
+    return NextResponse.json({ success: false, error: 'Empty message' }, { status: 400 })
+  }
+
+  const gymId = DEFAULT_GYM_ID
+
+  // Reset path: discard any active draft so a fresh one is created.
+  if (reset) {
+    await db.draftSchedule.updateMany({
+      where: { gymId, status: 'active', createdById: session.userId },
+      data: { status: 'discarded' },
+    })
+  }
+
+  const draftId = await getOrCreateActiveDraft(gymId, session.userId)
+
+  // Persist the user message immediately so even a stream-abort leaves
+  // a coherent transcript behind.
+  if (userMessage.trim()) {
+    await db.chatMessage.create({
+      data: { draftId, role: 'user', content: userMessage },
+    })
+  }
+
+  // Load thread history into the Anthropic message format.
+  const history = await db.chatMessage.findMany({
+    where: { draftId },
+    orderBy: { createdAt: 'asc' },
+  })
+  const messages: StoredMessage[] = []
+  for (const m of history) {
+    if (m.role === 'user') {
+      messages.push({ role: 'user', content: [{ type: 'text', text: m.content }] })
+    } else if (m.role === 'assistant') {
+      const stored = (m.toolCalls as Anthropic.Messages.ContentBlockParam[] | null) ?? null
+      if (stored) {
+        messages.push({ role: 'assistant', content: stored })
+      } else if (m.content) {
+        messages.push({ role: 'assistant', content: [{ type: 'text', text: m.content }] })
+      }
+    } else if (m.role === 'tool_result') {
+      const stored = (m.toolCalls as Anthropic.Messages.ContentBlockParam[] | null) ?? null
+      if (stored) messages.push({ role: 'user', content: stored })
+    }
+  }
+
+  const staticContext = await loadStaticContext(gymId)
+  const dynamicContext = `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)`
+
+  const anthropic = getAnthropic()
+
+  // The stream. Each LLM round opens an anthropic.messages.stream(),
+  // pipes text/tool deltas as SSE events, then runs the tool calls
+  // before looping into the next round. Final 'done' event signals
+  // the client to refresh proposals + draftId.
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: string, data: unknown) => {
+        controller.enqueue(encoder.encode(sseChunk(event, data)))
+      }
+
+      const startedAt = Date.now()
+      let stopReason: string | null = null
+      let round = 0
+
+      try {
+        while (round < MAX_TOOL_ROUNDS) {
+          // Wall-clock guard.
+          if (Date.now() - startedAt > WALL_CLOCK_BUDGET_MS) {
+            console.warn(
+              `[chat] wall-clock budget hit at round ${round} (${Date.now() - startedAt}ms) — wrapping up`
+            )
+            stopReason = 'tool_use'
+            break
+          }
+          round++
+
+          send('round_start', { round })
+
+          const llmStream = anthropic.messages.stream({
+            model: MODEL_ID,
+            max_tokens: 4096,
+            system: [
+              {
+                type: 'text',
+                text: SYSTEM_INSTRUCTIONS,
+                cache_control: { type: 'ephemeral' },
+              },
+              {
+                type: 'text',
+                text: staticContext,
+                cache_control: { type: 'ephemeral' },
+              },
+              { type: 'text', text: dynamicContext },
+            ],
+            tools: SCHEDULING_TOOLS,
+            messages: messages as Anthropic.Messages.MessageParam[],
+          })
+
+          // Pipe stream events to the client. Text deltas land as
+          // `text_delta`; tool_use block starts land as `tool_use_start`
+          // (so the UI can show "calling list_athletes…" before the
+          // result lands).
+          for await (const ev of llmStream) {
+            if (ev.type === 'content_block_start') {
+              if (ev.content_block.type === 'tool_use') {
+                send('tool_use_start', {
+                  id: ev.content_block.id,
+                  name: ev.content_block.name,
+                  index: ev.index,
+                })
+              }
+            } else if (ev.type === 'content_block_delta') {
+              if (ev.delta.type === 'text_delta') {
+                send('text_delta', { text: ev.delta.text })
+              }
+              // input_json_delta (tool args streaming) — we don't surface
+              // these; the start event + later result are enough.
+            } else if (ev.type === 'message_stop') {
+              // Final stop — handled via finalMessage() below.
+            }
+          }
+
+          const final = await llmStream.finalMessage()
+          const assistantBlocks = final.content
+          stopReason = final.stop_reason
+
+          if (final.usage) {
+            const u = final.usage as unknown as {
+              input_tokens?: number
+              output_tokens?: number
+              cache_creation_input_tokens?: number
+              cache_read_input_tokens?: number
+            }
+            console.log(
+              `[chat] tokens — input=${u.input_tokens ?? 0} output=${u.output_tokens ?? 0} ` +
+                `cache_write=${u.cache_creation_input_tokens ?? 0} ` +
+                `cache_read=${u.cache_read_input_tokens ?? 0}`
+            )
+          }
+
+          // Persist the assistant turn (with any tool_use blocks).
+          await db.chatMessage.create({
+            data: {
+              draftId,
+              role: 'assistant',
+              content: extractText(assistantBlocks),
+              toolCalls: assistantBlocks as unknown as object,
+            },
+          })
+
+          messages.push({
+            role: 'assistant',
+            content: assistantBlocks as unknown as Anthropic.Messages.ContentBlockParam[],
+          })
+
+          send('assistant_turn_complete', {
+            stopReason,
+            hadText: extractText(assistantBlocks).length > 0,
+          })
+
+          if (stopReason !== 'tool_use') break
+
+          // Dispatch every tool call and stream each result back.
+          const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+          for (const block of assistantBlocks) {
+            if (block.type !== 'tool_use') continue
+            try {
+              const result = await dispatchTool(block.name, block.input, {
+                gymId,
+                draftId,
+              })
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              })
+              send('tool_result', {
+                id: block.id,
+                name: block.name,
+                ok: true,
+              })
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err)
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: JSON.stringify({ error: errMsg }),
+                is_error: true,
+              })
+              send('tool_result', {
+                id: block.id,
+                name: block.name,
+                ok: false,
+                error: errMsg,
+              })
+            }
+          }
+
+          await db.chatMessage.create({
+            data: {
+              draftId,
+              role: 'tool_result',
+              content: '',
+              toolCalls: toolResults as unknown as object,
+            },
+          })
+
+          messages.push({
+            role: 'user',
+            content: toolResults as unknown as Anthropic.Messages.ContentBlockParam[],
+          })
+        }
+
+        // Graceful wrap-up: if we exited still in tool_use, force a final
+        // text turn so the conversation closes cleanly. Stream that too.
+        if (stopReason === 'tool_use') {
+          send('wrap_up_start', {})
+          const wrap = anthropic.messages.stream({
+            model: MODEL_ID,
+            max_tokens: 1024,
+            system: [
+              { type: 'text', text: SYSTEM_INSTRUCTIONS },
+              { type: 'text', text: staticContext },
+              {
+                type: 'text',
+                text:
+                  dynamicContext +
+                  '\n\nNote: You hit the per-turn tool-call budget. ' +
+                  'Summarize for the owner what got done, what is pending in the draft, ' +
+                  'and what still needs to be addressed. Do NOT call any more tools.',
+              },
+            ],
+            messages: messages as Anthropic.Messages.MessageParam[],
+          })
+          for await (const ev of wrap) {
+            if (
+              ev.type === 'content_block_delta' &&
+              ev.delta.type === 'text_delta'
+            ) {
+              send('text_delta', { text: ev.delta.text })
+            }
+          }
+          const wrapFinal = await wrap.finalMessage()
+          await db.chatMessage.create({
+            data: {
+              draftId,
+              role: 'assistant',
+              content: extractText(wrapFinal.content),
+              toolCalls: wrapFinal.content as unknown as object,
+            },
+          })
+          stopReason = wrapFinal.stop_reason
+        }
+
+        send('done', { draftId, stopReason })
+      } catch (error) {
+        console.error('Chat error:', error)
+        send('error', {
+          message: error instanceof Error ? error.message : String(error),
+        })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      // Disable buffering on Vercel/Nginx so events reach the client
+      // immediately rather than getting batched.
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }
 
 // GET — load the active draft thread.
