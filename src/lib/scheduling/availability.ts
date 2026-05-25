@@ -3,6 +3,13 @@
 
 import { db } from '@/lib/db'
 import type { Minute, ResolvedAvailability } from './types'
+import {
+  dayOfWeekInZone,
+  endOfDayInZone,
+  minutesIntoDayInZone,
+  partsInZone,
+  startOfDayInZone,
+} from './timezone'
 
 interface Interval {
   startMinute: Minute
@@ -46,8 +53,9 @@ function subtract(base: Interval[], remove: Interval[]): Interval[] {
   return result
 }
 
-function toYMD(date: Date): string {
-  return date.toISOString().slice(0, 10)
+function toYMDInZone(date: Date, zone: string): string {
+  const p = partsInZone(date, zone)
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
 }
 
 // Until a trainer's availability is configured, assume they can take
@@ -57,9 +65,11 @@ const DEFAULT_OPEN: Interval[] = [{ startMinute: 6 * 60, endMinute: 21 * 60 }]
 
 export async function resolveAvailabilityForDate(
   trainerId: string,
-  date: Date
+  date: Date,
+  zone: string
 ): Promise<ResolvedAvailability> {
-  const dayOfWeek = date.getDay()
+  // Day-of-week is in the gym's zone, not the server's.
+  const dayOfWeek = dayOfWeekInZone(date, zone)
 
   // Check if the trainer has ANY availability rows at all.
   const anyRule = await db.trainerAvailability.findFirst({ where: { trainerId } })
@@ -71,15 +81,14 @@ export async function resolveAvailabilityForDate(
         where: { trainerId, dayOfWeek },
       })
 
-  const dayStart = new Date(date)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(date)
-  dayEnd.setHours(23, 59, 59, 999)
+  // Same for "the day" boundary used to fetch exceptions.
+  const dayStart = startOfDayInZone(date, zone)
+  const dayEnd = endOfDayInZone(date, zone)
 
   const exceptions = await db.availabilityException.findMany({
     where: {
       trainerId,
-      date: { gte: dayStart, lte: dayEnd },
+      date: { gte: dayStart, lt: dayEnd },
     },
   })
 
@@ -108,7 +117,7 @@ export async function resolveAvailabilityForDate(
 
   return {
     trainerId,
-    date: toYMD(date),
+    date: toYMDInZone(date, zone),
     windows,
   }
 }
@@ -116,23 +125,32 @@ export async function resolveAvailabilityForDate(
 export async function resolveAvailabilityForRange(
   trainerId: string,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  zone: string
 ): Promise<ResolvedAvailability[]> {
+  // Walk zone-local days from startDate's zone-day through endDate's.
   const days: Date[] = []
-  const cursor = new Date(startDate)
-  cursor.setHours(0, 0, 0, 0)
-  const end = new Date(endDate)
-  end.setHours(0, 0, 0, 0)
-  while (cursor <= end) {
-    days.push(new Date(cursor))
-    cursor.setDate(cursor.getDate() + 1)
+  let cursor = startOfDayInZone(startDate, zone)
+  const finalDay = startOfDayInZone(endDate, zone)
+  // Guard against pathological input.
+  let safety = 0
+  while (cursor.getTime() <= finalDay.getTime() && safety++ < 366) {
+    days.push(cursor)
+    // Advance one zone-day. Using +25h then snapping back to zone-midnight
+    // handles DST transitions cleanly.
+    cursor = startOfDayInZone(new Date(cursor.getTime() + 25 * 60 * 60_000), zone)
   }
-  return Promise.all(days.map((d) => resolveAvailabilityForDate(trainerId, d)))
+  return Promise.all(days.map((d) => resolveAvailabilityForDate(trainerId, d, zone)))
 }
 
+// DEPRECATED: server-local minutes-into-day. Kept only so older callers
+// that don't have a gym zone in scope still type-check. New code should
+// use minutesIntoDayInZone from ./timezone.
 export function minutesIntoDay(date: Date): Minute {
   return date.getHours() * 60 + date.getMinutes()
 }
+
+export { minutesIntoDayInZone }
 
 export function isWithinWindows(
   startMin: Minute,

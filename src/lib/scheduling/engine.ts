@@ -5,9 +5,16 @@
 import { db } from '@/lib/db'
 import {
   isWithinWindows,
-  minutesIntoDay,
   resolveAvailabilityForDate,
 } from './availability'
+import {
+  endOfDayInZone,
+  formatHuman,
+  formatTime,
+  minutesIntoDayInZone,
+  partsInZone,
+  startOfDayInZone,
+} from './timezone'
 import type {
   BookingInput,
   Conflict,
@@ -21,9 +28,15 @@ import type {
 const DEFAULT_GYM_ID = 'dsc_default_gym'
 
 async function loadConfig(gymId: string) {
-  const config = await db.gymConfig.findUnique({ where: { gymId } })
+  const [config, gym] = await Promise.all([
+    db.gymConfig.findUnique({ where: { gymId } }),
+    db.gym.findUnique({ where: { id: gymId }, select: { timezone: true } }),
+  ])
   if (!config) {
     throw new Error(`No GymConfig for gym ${gymId}`)
+  }
+  if (!gym) {
+    throw new Error(`No Gym row for ${gymId}`)
   }
   let sessionLengths: number[] = [30, 60]
   try {
@@ -38,7 +51,16 @@ async function loadConfig(gymId: string) {
     allowSameTrainerSameDay: config.allowSameTrainerSameDay,
     cancellationPolicyHours: config.cancellationPolicyHours,
     defaultSessionMinutes: config.defaultSessionMinutes,
+    timezone: gym.timezone,
   }
+}
+
+export async function getGymTimezone(gymId: string): Promise<string> {
+  const gym = await db.gym.findUnique({
+    where: { id: gymId },
+    select: { timezone: true },
+  })
+  return gym?.timezone ?? 'America/Chicago'
 }
 
 export async function validateBooking(
@@ -48,6 +70,7 @@ export async function validateBooking(
 ): Promise<ValidationResult> {
   const conflicts: Conflict[] = []
   const config = await loadConfig(gymId)
+  const zone = config.timezone
   const start = new Date(input.scheduledAt)
   const end = new Date(start.getTime() + input.duration * 60_000)
 
@@ -55,7 +78,7 @@ export async function validateBooking(
   if (start.getTime() < Date.now() - 60_000) {
     conflicts.push({
       kind: 'PAST_TIME',
-      message: `${start.toLocaleString()} is in the past.`,
+      message: `${formatHuman(start, zone)} is in the past.`,
     })
   }
 
@@ -104,22 +127,22 @@ export async function validateBooking(
   }
 
   // 3. Inside the trainer's availability window for that day.
-  const availability = await resolveAvailabilityForDate(input.trainerId, start)
-  const startMin = minutesIntoDay(start)
+  // Both "what day" and "what minutes" are interpreted in the gym's zone.
+  const availability = await resolveAvailabilityForDate(input.trainerId, start, zone)
+  const startMin = minutesIntoDayInZone(start, zone)
   const endMin = startMin + input.duration
   if (!isWithinWindows(startMin, endMin, availability.windows)) {
     conflicts.push({
       kind: 'OUTSIDE_AVAILABILITY',
-      message: `${trainer.user.name} isn't available ${start.toLocaleString()} – ${end.toLocaleTimeString()}.`,
+      message: `${trainer.user.name} isn't available ${formatHuman(start, zone)} – ${formatTime(end, zone)}.`,
       details: { windows: availability.windows },
     })
   }
 
-  // 4. No double-booking for this trainer (with buffer).
-  const dayStart = new Date(start)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
+  // 4. No double-booking for this trainer (with buffer). "Same day" is
+  // the gym-local calendar day, not the server's UTC day.
+  const dayStart = startOfDayInZone(start, zone)
+  const dayEnd = endOfDayInZone(start, zone)
 
   const sameDaySessions = await db.session.findMany({
     where: {
@@ -141,7 +164,7 @@ export async function validateBooking(
         kind: config.bufferMinutes && (start.getTime() >= sEnd || end.getTime() <= sStart)
           ? 'BUFFER_VIOLATION'
           : 'TRAINER_DOUBLE_BOOKED',
-        message: `${trainer.user.name} is already with ${s.athlete.firstName} ${s.athlete.lastName} ${new Date(sStart).toLocaleTimeString()} – ${new Date(sEnd).toLocaleTimeString()}.`,
+        message: `${trainer.user.name} is already with ${s.athlete.firstName} ${s.athlete.lastName} ${formatTime(new Date(sStart), zone)} – ${formatTime(new Date(sEnd), zone)}.`,
         details: { conflictingSessionId: s.id },
       })
     }
@@ -177,7 +200,7 @@ export async function validateBooking(
     if (overlapping.length >= config.floorCap) {
       conflicts.push({
         kind: 'FLOOR_CAP_EXCEEDED',
-        message: `Floor cap reached: ${config.floorCap} sessions already overlap ${start.toLocaleTimeString()} – ${end.toLocaleTimeString()}.`,
+        message: `Floor cap reached: ${config.floorCap} sessions already overlap ${formatTime(start, zone)} – ${formatTime(end, zone)}.`,
         details: { overlappingSessionIds: overlapping.map((o) => o.id) },
       })
     }
@@ -292,14 +315,13 @@ export async function suggestSlots(args: {
   preferredStart?: 'morning' | 'afternoon' | 'evening' | 'any'
 }): Promise<SlotSuggestion[]> {
   const config = await loadConfig(args.gymId)
+  const zone = config.timezone
   const duration = args.duration || config.defaultSessionMinutes
-  const availability = await resolveAvailabilityForDate(args.trainerId, args.date)
+  const availability = await resolveAvailabilityForDate(args.trainerId, args.date, zone)
 
-  // Pull existing bookings for that day for that trainer.
-  const dayStart = new Date(args.date)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart)
-  dayEnd.setDate(dayEnd.getDate() + 1)
+  // Pull existing bookings for that gym-local day.
+  const dayStart = startOfDayInZone(args.date, zone)
+  const dayEnd = endOfDayInZone(args.date, zone)
 
   const existing = await db.session.findMany({
     where: {
@@ -311,8 +333,8 @@ export async function suggestSlots(args: {
   })
 
   const occupied = existing.map((s) => ({
-    start: minutesIntoDay(s.scheduledAt),
-    end: minutesIntoDay(s.scheduledAt) + s.duration + config.bufferMinutes,
+    start: minutesIntoDayInZone(s.scheduledAt, zone),
+    end: minutesIntoDayInZone(s.scheduledAt, zone) + s.duration + config.bufferMinutes,
   }))
 
   const suggestions: SlotSuggestion[] = []
@@ -324,21 +346,23 @@ export async function suggestSlots(args: {
         (o) => t < o.end && slotEnd > o.start - config.bufferMinutes
       )
       if (collides) continue
-      const start = new Date(dayStart)
-      start.setMinutes(t)
+      // Construct the instant for `dayStart + t minutes`. dayStart is the
+      // exact instant of zone-midnight, so adding `t` minutes lands on
+      // zone-local HH:MM.
+      const start = new Date(dayStart.getTime() + t * 60_000)
       const end = new Date(start.getTime() + duration * 60_000)
       suggestions.push({ trainerId: args.trainerId, start, end })
     }
   }
 
-  // Filter by time-of-day preference if given.
+  // Filter by time-of-day preference if given. Hours are in gym zone.
   if (args.preferredStart && args.preferredStart !== 'any') {
     const within = {
       morning: (h: number) => h < 12,
       afternoon: (h: number) => h >= 12 && h < 17,
       evening: (h: number) => h >= 17,
     }[args.preferredStart]
-    return suggestions.filter((s) => within(s.start.getHours()))
+    return suggestions.filter((s) => within(partsInZone(s.start, zone).hour))
   }
   return suggestions
 }

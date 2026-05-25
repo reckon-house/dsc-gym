@@ -17,8 +17,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { validateBooking } from '@/lib/scheduling/engine'
+import { getGymTimezone, validateBooking } from '@/lib/scheduling/engine'
 import { resolveAvailabilityForRange } from '@/lib/scheduling/availability'
+import {
+  dateOnlyInZone,
+  formatHuman,
+  formatTime,
+  minutesToHHMM,
+  startOfDayInZone,
+} from '@/lib/scheduling/timezone'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { publicBaseUrl } from '@/lib/oauth/util'
 
@@ -164,14 +171,19 @@ const TOOLS = [
     description:
       'Request a new session. Creates a BookingRequest the gym owner must approve. ' +
       'Returns the request id. The session is NOT booked until the owner approves. ' +
-      "Provide scheduledAt as an ISO 8601 datetime (e.g. '2026-05-30T15:00:00-05:00').",
+      "Provide scheduledAt as an ISO 8601 datetime that INCLUDES a timezone offset. " +
+      "The gym is in America/Chicago (Central). For e.g. 3:00 PM Central on May 30 2026, " +
+      "send '2026-05-30T15:00:00-05:00' (CDT) or '2026-05-30T15:00:00-06:00' (CST). " +
+      "If unsure which offset applies, use America/Chicago wall-clock time with the " +
+      "current offset; the server normalizes to UTC.",
     inputSchema: {
       type: 'object',
       required: ['scheduledAt'],
       properties: {
         scheduledAt: {
           type: 'string',
-          description: 'ISO 8601 datetime for the requested session start.',
+          description:
+            'ISO 8601 datetime for the requested session start, WITH timezone offset.',
         },
         duration: {
           type: 'number',
@@ -218,6 +230,7 @@ async function loadAthlete(athleteId: string) {
 }
 
 async function tool_my_sessions(athleteId: string, args: { range?: string }) {
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
   const now = new Date()
   const range = args.range === 'past' ? 'past' : 'upcoming'
   const start = range === 'past' ? new Date(now.getTime() - 30 * 86400_000) : now
@@ -240,9 +253,11 @@ async function tool_my_sessions(athleteId: string, args: { range?: string }) {
 
   return structuredContent({
     range,
+    timezone: zone,
     sessions: sessions.map((s) => ({
       id: s.id,
       scheduledAt: s.scheduledAt.toISOString(),
+      localTime: formatHuman(s.scheduledAt, zone),
       duration: s.duration,
       trainerName: s.trainer.user.name,
       completed: s.completed,
@@ -271,27 +286,38 @@ async function tool_my_trainer_availability(
   if (!athlete?.trainer) {
     return textContent("You don't have a primary trainer assigned. Can't show availability.")
   }
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = args.startDate ? new Date(args.startDate + 'T00:00:00') : today
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
+  const todayLocal = startOfDayInZone(new Date(), zone)
+  const start = args.startDate
+    ? dateOnlyInZone(args.startDate, zone)
+    : todayLocal
   const end = args.endDate
-    ? new Date(args.endDate + 'T00:00:00')
-    : new Date(today.getTime() + 14 * 86400_000)
+    ? dateOnlyInZone(args.endDate, zone)
+    : new Date(todayLocal.getTime() + 14 * 86400_000)
 
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+  if (!start || !end) {
     return textContent('Invalid startDate or endDate. Use YYYY-MM-DD.')
   }
 
-  const windowsByDay = await resolveAvailabilityForRange(athlete.trainer.id, start, end)
+  const windowsByDay = await resolveAvailabilityForRange(
+    athlete.trainer.id,
+    start,
+    end,
+    zone
+  )
   return structuredContent({
     trainerName: athlete.trainer.user.name,
+    timezone: zone,
+    timezoneNote:
+      `All times below are in ${zone} (the gym's local time). ` +
+      'When asking the athlete to confirm a session time, always state it in this zone.',
     days: windowsByDay.map((d) => ({
-      date: d.date,
+      date: d.date, // YYYY-MM-DD in gym zone
       windows: d.windows.map((w) => ({
         startMinute: w.startMinute,
         endMinute: w.endMinute,
-        startTime: `${String(Math.floor(w.startMinute / 60)).padStart(2, '0')}:${String(w.startMinute % 60).padStart(2, '0')}`,
-        endTime: `${String(Math.floor(w.endMinute / 60)).padStart(2, '0')}:${String(w.endMinute % 60).padStart(2, '0')}`,
+        startTime: minutesToHHMM(w.startMinute),
+        endTime: minutesToHHMM(w.endMinute),
       })),
     })),
   })
@@ -340,16 +366,19 @@ async function tool_request_session(
     },
   })
 
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
   return structuredContent({
     requestId: requestRow.id,
     status: 'pending',
     scheduledAt: scheduledAt.toISOString(),
+    localTime: formatHuman(scheduledAt, zone),
+    timezone: zone,
     duration,
     trainerName: athlete.trainer.user.name,
     conflicts: validation.ok ? [] : validation.conflicts.map((c) => c.message),
     message: validation.ok
-      ? `Request submitted to ${athlete.trainer.user.name}. You'll hear back once it's approved.`
-      : `Request submitted with potential conflicts the gym owner will review.`,
+      ? `Request submitted to ${athlete.trainer.user.name} for ${formatHuman(scheduledAt, zone)}. You'll hear back once it's approved.`
+      : `Request submitted for ${formatHuman(scheduledAt, zone)} with potential conflicts the gym owner will review.`,
   })
 }
 
@@ -374,14 +403,18 @@ async function tool_cancel_session(athleteId: string, args: { sessionId?: string
     where: { id: session.id },
     data: { cancelled: true },
   })
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
   return structuredContent({
     sessionId: session.id,
     status: 'cancelled',
     scheduledAt: session.scheduledAt.toISOString(),
+    localTime: formatHuman(session.scheduledAt, zone),
+    timezone: zone,
   })
 }
 
 async function tool_my_pending_requests(athleteId: string) {
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
   const requests = await db.bookingRequest.findMany({
     where: {
       athleteId,
@@ -394,10 +427,12 @@ async function tool_my_pending_requests(athleteId: string) {
     include: { trainer: { include: { user: { select: { name: true } } } } },
   })
   return structuredContent({
+    timezone: zone,
     requests: requests.map((r) => ({
       id: r.id,
       status: r.status,
       scheduledAt: r.scheduledAt.toISOString(),
+      localTime: formatHuman(r.scheduledAt, zone),
       duration: r.duration,
       trainerName: r.trainer.user.name,
       notes: r.notes,
