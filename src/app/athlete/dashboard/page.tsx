@@ -12,6 +12,19 @@ interface UpcomingSession {
   trainerName: string
 }
 
+interface BookingRequest {
+  id: string
+  status: 'pending' | 'approved' | 'declined' | 'cancelled'
+  scheduledAt: string
+  localTime: string
+  duration: number
+  trainerName: string
+  notes: string | null
+  declineReason: string | null
+  resolvedAt: string | null
+  source: string
+}
+
 interface AthleteSession {
   id: string
   name: string
@@ -32,6 +45,7 @@ export default function AthleteDashboard() {
   const router = useRouter()
   const [athlete, setAthlete] = useState<AthleteSession | null>(null)
   const [sessions, setSessions] = useState<UpcomingSession[]>([])
+  const [requests, setRequests] = useState<BookingRequest[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -43,9 +57,14 @@ export default function AthleteDashboard() {
         return
       }
       setAthlete(d.athlete)
-      const sRes = await fetch('/api/athletes/me/sessions')
+      const [sRes, rRes] = await Promise.all([
+        fetch('/api/athletes/me/sessions'),
+        fetch('/api/athletes/me/requests'),
+      ])
       const sData = await sRes.json()
       if (sData.success) setSessions(sData.data)
+      const rData = await rRes.json()
+      if (rData.success) setRequests(rData.data)
       setLoading(false)
     })()
   }, [router])
@@ -147,6 +166,9 @@ export default function AthleteDashboard() {
           </div>
         )}
 
+        {/* Request status — pending + recent decisions */}
+        {requests.length > 0 && <RequestActivity requests={requests} />}
+
         {/* Upcoming list */}
         <div className="mb-3">
           <div className="dsc-label text-black/50">
@@ -198,6 +220,93 @@ export default function AthleteDashboard() {
         {/* Connect to AI — MCP */}
         <ConnectToAI />
       </div>
+    </div>
+  )
+}
+
+function RequestActivity({ requests }: { requests: BookingRequest[] }) {
+  const pending = requests.filter((r) => r.status === 'pending')
+  const recent = requests.filter((r) => r.status !== 'pending')
+
+  return (
+    <div className="mb-6 space-y-3">
+      {pending.length > 0 && (
+        <div className="rounded-3xl bg-black/[0.04] p-4">
+          <div className="dsc-label text-black/50 mb-2">
+            Waiting on approval · {pending.length}
+          </div>
+          <div className="space-y-2">
+            {pending.map((r) => (
+              <div
+                key={r.id}
+                className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3"
+              >
+                <span
+                  className="w-2 h-2 rounded-full bg-black/60 shrink-0"
+                  aria-hidden
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-black">
+                    {r.localTime}
+                    <span className="text-black/50">
+                      {' · '}
+                      {r.duration}min with {r.trainerName.split(' ')[0]}
+                    </span>
+                  </div>
+                  {r.source === 'mcp' && (
+                    <div className="dsc-label text-black/40 mt-0.5">
+                      via AI
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div>
+          <div className="dsc-label text-black/50 mb-2">Recent activity</div>
+          <div className="space-y-2">
+            {recent.map((r) => {
+              const isApproved = r.status === 'approved'
+              return (
+                <div
+                  key={r.id}
+                  className="rounded-2xl border border-black/10 px-4 py-3 flex items-start gap-3"
+                >
+                  <span
+                    className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                      isApproved ? 'bg-green-600' : 'bg-black/30'
+                    }`}
+                    aria-hidden
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-black">
+                      <span className="font-medium">
+                        {isApproved ? 'Approved' : 'Declined'}
+                      </span>
+                      <span className="text-black/50">
+                        {' · '}
+                        {r.localTime}
+                      </span>
+                    </div>
+                    <div className="text-xs text-black/60 mt-0.5">
+                      {r.duration}min with {r.trainerName.split(' ')[0]}
+                    </div>
+                    {!isApproved && r.declineReason && (
+                      <div className="text-xs text-black/70 mt-1 italic">
+                        “{r.declineReason}”
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

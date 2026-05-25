@@ -5,11 +5,19 @@
 
 import crypto from 'crypto'
 
+export interface EmailAttachment {
+  filename: string
+  // Plain-text content; we base64-encode it for Resend's `content` field.
+  content: string
+  contentType?: string
+}
+
 export interface SendEmailArgs {
   to: string
   subject: string
   text: string
   html?: string
+  attachments?: EmailAttachment[]
 }
 
 export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boolean }> {
@@ -17,23 +25,31 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boole
   const resendKey = process.env.RESEND_API_KEY
   if (resendKey) {
     try {
+      const body: Record<string, unknown> = {
+        from: process.env.RESEND_FROM || 'DSC <noreply@dsc.com>',
+        to: args.to,
+        subject: args.subject,
+        text: args.text,
+        html: args.html,
+      }
+      if (args.attachments && args.attachments.length > 0) {
+        body.attachments = args.attachments.map((a) => ({
+          filename: a.filename,
+          content: Buffer.from(a.content, 'utf8').toString('base64'),
+          ...(a.contentType ? { content_type: a.contentType } : {}),
+        }))
+      }
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${resendKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          from: process.env.RESEND_FROM || 'DSC <noreply@dsc.com>',
-          to: args.to,
-          subject: args.subject,
-          text: args.text,
-          html: args.html,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
-        const body = await res.text()
-        console.error('Resend send failed:', body)
+        const errBody = await res.text()
+        console.error('Resend send failed:', errBody)
         return { delivered: false }
       }
       return { delivered: true }
@@ -48,6 +64,9 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boole
   console.log(`   To: ${args.to}`)
   console.log(`   Subject: ${args.subject}`)
   console.log(`   ${args.text.replace(/\n/g, '\n   ')}`)
+  if (args.attachments?.length) {
+    console.log(`   Attachments: ${args.attachments.map((a) => a.filename).join(', ')}`)
+  }
   console.log('')
   return { delivered: false }
 }
@@ -231,6 +250,138 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
     </table>
   </body>
 </html>`
+}
+
+// ----- Booking request approval / decline emails -----
+
+export function buildSessionApprovedEmail(args: {
+  firstName: string
+  trainerName: string
+  // Pre-formatted strings — the caller already knows the gym's zone.
+  whenHuman: string         // "Wed, May 27, 3:00 PM"
+  whenDayDate: string       // "Wednesday, May 27"
+  whenTimeRange: string     // "3:00 PM – 4:00 PM"
+  durationMinutes: number
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `Confirmed: ${args.whenHuman} with ${args.trainerName.split(' ')[0]}`
+
+  const text = `Hi ${args.firstName},
+
+Your session is confirmed.
+
+${args.whenDayDate}
+${args.whenTimeRange} (${args.durationMinutes} min) with ${args.trainerName}
+
+Add it to your calendar using the attached .ics, or see all your upcoming sessions:
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `Confirmed: ${args.whenHuman} with ${args.trainerName.split(' ')[0]}.`,
+    headerLabel: 'Dallas Sports Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'You’re booked.',
+    intro: `Hi ${args.firstName} — ${args.trainerName} confirmed your session on ${args.whenDayDate} at ${args.whenTimeRange.split(' – ')[0]}. The .ics attached to this email will drop it on your calendar.`,
+    buttonLabel: 'See my schedule',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open your dashboard:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: `If you need to cancel, you can do it from your dashboard or by asking the gym directly. Heads-up — DSC asks for 24h notice on cancellations.`,
+  })
+
+  return { subject, text, html }
+}
+
+export function buildSessionDeclinedEmail(args: {
+  firstName: string
+  trainerName: string
+  whenHuman: string
+  reason: string | null
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `Couldn’t fit ${args.whenHuman}`
+
+  const reasonText = args.reason ? `\n${args.trainerName.split(' ')[0]} said: "${args.reason}"\n` : ''
+
+  const text = `Hi ${args.firstName},
+
+We couldn't fit your requested session at ${args.whenHuman} with ${args.trainerName}.
+${reasonText}
+Pick another time on your dashboard or ask your AI to find an open slot:
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `Couldn't fit ${args.whenHuman} — try another time.`,
+    headerLabel: 'Dallas Sports Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'Let’s find\nanother time.',
+    intro:
+      `Hi ${args.firstName} — we couldn’t fit ${args.whenHuman} with ${args.trainerName}.` +
+      (args.reason ? ` ${args.trainerName.split(' ')[0]} said: “${args.reason}”` : '') +
+      ' Hop back on your dashboard to pick another slot, or ask your AI to find one.',
+    buttonLabel: 'Find another time',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open your dashboard:',
+    fallbackUrl: args.dashboardUrl,
+    footnote:
+      'No charge for declined requests. The session was never on your account.',
+  })
+
+  return { subject, text, html }
+}
+
+// Build an RFC 5545 .ics calendar event for an approved session. Returns
+// the file contents — pass into sendEmail as an attachment.
+export function buildSessionIcs(args: {
+  uid: string
+  startsAt: Date           // absolute instant
+  endsAt: Date             // absolute instant
+  trainerName: string
+  athleteName: string
+  location?: string
+  description?: string
+}): string {
+  const stamp = (d: Date) => {
+    // YYYYMMDDTHHMMSSZ in UTC
+    const iso = d.toISOString()
+    return iso.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+  }
+  const escapeIcs = (s: string) =>
+    s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
+
+  // Each line MUST be <= 75 octets; for our content lines this is fine,
+  // but if a description ever balloons we'd need to fold. Skipping that
+  // complexity since our descriptions are short.
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Dallas Sports Collective//DSC Gym//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${args.uid}@dsc-gym`,
+    `DTSTAMP:${stamp(new Date())}`,
+    `DTSTART:${stamp(args.startsAt)}`,
+    `DTEND:${stamp(args.endsAt)}`,
+    `SUMMARY:${escapeIcs(`Training w/ ${args.trainerName} — DSC`)}`,
+    `DESCRIPTION:${escapeIcs(args.description || `${args.athleteName} with ${args.trainerName}`)}`,
+    ...(args.location ? [`LOCATION:${escapeIcs(args.location)}`] : []),
+    'STATUS:CONFIRMED',
+    'TRANSP:OPAQUE',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+  return lines.join('\r\n') + '\r\n'
 }
 
 function escapeHtml(s: string): string {
