@@ -15,5 +15,7 @@ export async function GET(request: NextRequest) {
     scopes_supported: ['mcp'],
     bearer_methods_supported: ['header'],
     resource_documentation: `${base}/athlete/dashboard`,
+    resource_name: 'Dallas Sports Collective',
+    logo_uri: `${base}/logo-mark.png`,
   })
 }

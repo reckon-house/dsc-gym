@@ -443,12 +443,21 @@ async function callTool(
 // GET returns a tiny "this is an MCP endpoint" hint. Some clients probe
 // with GET first.
 export async function GET(request: NextRequest) {
+  const base = publicBaseUrl(request.nextUrl.origin)
   return NextResponse.json({
-    name: 'dsc-athlete',
-    description: 'DSC Gym athlete MCP server. POST JSON-RPC 2.0 requests here.',
+    name: 'Dallas Sports Collective',
+    title: 'Dallas Sports Collective',
+    description:
+      'See your DSC schedule, check your trainer\'s availability, and request sessions.',
     protocol: 'mcp/2025-03-26',
     auth: 'OAuth 2.1 bearer token',
-    discovery: `${publicBaseUrl(request.nextUrl.origin)}/.well-known/oauth-protected-resource`,
+    discovery: `${base}/.well-known/oauth-protected-resource`,
+    icon: `${base}/logo-mark.png`,
+    icons: [
+      { src: `${base}/logo-mark.png`, sizes: '932x932', type: 'image/png' },
+      { src: `${base}/apple-icon.png`, sizes: '180x180', type: 'image/png' },
+      { src: `${base}/icon.png`, sizes: '512x512', type: 'image/png' },
+    ],
   })
 }
 
@@ -506,10 +515,22 @@ async function handleRpc(
   try {
     switch (req.method) {
       case 'initialize': {
+        const base = publicBaseUrl(null)
         const result = {
           protocolVersion: '2025-03-26',
           capabilities: { tools: {} },
-          serverInfo: { name: 'dsc-athlete', version: '0.1.0' },
+          serverInfo: {
+            name: 'Dallas Sports Collective',
+            title: 'Dallas Sports Collective',
+            version: '0.1.0',
+            icon: `${base}/logo-mark.png`,
+            icons: [
+              { src: `${base}/logo-mark.png`, sizes: '932x932', type: 'image/png' },
+              { src: `${base}/apple-icon.png`, sizes: '180x180', type: 'image/png' },
+              { src: `${base}/icon.png`, sizes: '512x512', type: 'image/png' },
+            ],
+            websiteUrl: `${base}/athlete`,
+          },
         }
         return isNotification ? null : rpcResult(req.id, result)
       }

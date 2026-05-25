@@ -20,5 +20,9 @@ export async function GET(request: NextRequest) {
     token_endpoint_auth_methods_supported: ['none'], // public clients, PKCE
     scopes_supported: ['mcp'],
     service_documentation: `${base}/athlete/dashboard`,
+    // Branding hints (non-standard but read by MCP connector UIs).
+    op_policy_uri: `${base}/athlete`,
+    logo_uri: `${base}/logo-mark.png`,
+    op_name: 'Dallas Sports Collective',
   })
 }
