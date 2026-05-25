@@ -98,7 +98,7 @@ model Athlete {
   firstName    String
   lastName     String
   email        String   @unique
-  phone        String?
+  phone        String?  @unique
   passwordHash String?
   address      String?
   trainerId    String?

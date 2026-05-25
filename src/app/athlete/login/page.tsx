@@ -18,10 +18,17 @@ function LoginInner() {
   const params = useSearchParams()
   const returnTo = safeReturnTo(params.get('returnTo'))
 
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<{ message: string; needsVerification?: boolean } | null>(null)
+
+  // Detect what the user is typing so we can pick the right keyboard
+  // (numeric pad for phone) and autoComplete hint. Switches as they type.
+  const looksLikePhone =
+    identifier.length > 0 &&
+    !identifier.includes('@') &&
+    /^[\d\s\-\(\)\+]+$/.test(identifier)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +38,7 @@ function LoginInner() {
       const res = await fetch('/api/athletes/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       })
       const data = await res.json()
       if (data.success) {
@@ -88,12 +95,13 @@ function LoginInner() {
 
             <form onSubmit={handleSubmit} className="space-y-2 dsc-enter-delay-1">
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type={looksLikePhone ? 'tel' : 'text'}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
-                autoComplete="email"
-                placeholder="Email"
+                autoComplete={looksLikePhone ? 'tel' : 'username'}
+                inputMode={looksLikePhone ? 'tel' : 'email'}
+                placeholder="Email or mobile"
                 className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
               <input

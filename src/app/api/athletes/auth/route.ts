@@ -6,24 +6,48 @@ import { cookies } from 'next/headers'
 import { SignJWT, jwtVerify } from 'jose'
 import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth'
+import { normalizePhone } from '@/lib/phone'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'fallback-secret-change-in-production'
 )
 
+// Accept either an email or a phone number as the identifier. We sniff
+// the input — anything with '@' is treated as email, anything else we
+// try to normalize as a US phone. The DB has unique constraints on both
+// columns so the lookup is unambiguous either way.
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
-    if (!email || !password) {
+    const body = await request.json()
+    // Backwards-compatible: keep accepting { email, password } if
+    // that's what's sent. Prefer the new { identifier, password }.
+    const identifier: string | undefined = body.identifier ?? body.email
+    const password: string | undefined = body.password
+    if (!identifier || !password) {
       return NextResponse.json(
-        { success: false, error: 'Email and password are required' },
+        { success: false, error: 'Email or mobile and password are required' },
         { status: 400 }
       )
     }
 
-    const athlete = await db.athlete.findUnique({
-      where: { email: email.toLowerCase() },
-    })
+    const looksLikeEmail = identifier.includes('@')
+    const lookup = looksLikeEmail
+      ? { email: identifier.toLowerCase().trim() }
+      : (() => {
+          const p = normalizePhone(identifier)
+          return p ? { phone: p } : null
+        })()
+
+    if (!lookup) {
+      // Bad phone format — same generic error to avoid telling an attacker
+      // whether the address space matters.
+      return NextResponse.json(
+        { success: false, error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
+
+    const athlete = await db.athlete.findUnique({ where: lookup })
 
     // Use a generic error so we don't leak which emails exist OR which
     // ones are archived.
