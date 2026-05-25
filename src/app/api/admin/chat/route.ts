@@ -196,10 +196,35 @@ export async function POST(request: NextRequest) {
       const send = (event: string, data: unknown) => {
         controller.enqueue(encoder.encode(sseChunk(event, data)))
       }
+      // SSE comment line — clients ignore them per spec, but the bytes
+      // flush the response buffer. Used both as initial padding (defeat
+      // Vercel/Node ~8KB chunk batching so the first text_delta lands
+      // immediately) and as keep-alives between long-running tool
+      // dispatches so the connection stays live.
+      const ping = () => {
+        controller.enqueue(encoder.encode(`: keep-alive ${Date.now()}\n\n`))
+      }
+
+      // 2KB padding upfront — flushes past any small-chunk buffering
+      // and forces the client's first read() to fire immediately.
+      controller.enqueue(
+        encoder.encode(`: ${'-'.repeat(2048)}\n\n`)
+      )
 
       const startedAt = Date.now()
       let stopReason: string | null = null
       let round = 0
+
+      // Periodic heartbeat for very long tool dispatches — fires every
+      // 3s independent of the main loop so even a quiet stretch keeps
+      // the connection warm.
+      const heartbeat = setInterval(() => {
+        try {
+          ping()
+        } catch {
+          /* controller may be closed; ignore */
+        }
+      }, 3000)
 
       try {
         while (round < MAX_TOOL_ROUNDS) {
@@ -398,6 +423,7 @@ export async function POST(request: NextRequest) {
           message: error instanceof Error ? error.message : String(error),
         })
       } finally {
+        clearInterval(heartbeat)
         controller.close()
       }
     },
