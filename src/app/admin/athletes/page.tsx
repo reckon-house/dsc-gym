@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { AdminHeader } from '../_components/AdminHeader'
 
 interface AthleteRow {
@@ -105,9 +106,12 @@ export default function AthletesView() {
           {filtered.map((a) => (
             <div
               key={a.id}
-              className="rounded-2xl border border-black/10 p-3 md:p-4 flex items-center justify-between gap-3"
+              className="rounded-2xl border border-black/10 p-3 md:p-4 flex items-center justify-between gap-3 hover:bg-black/[0.02] transition-colors"
             >
-              <div className="min-w-0 flex-1">
+              <Link
+                href={`/admin/athletes/${a.id}`}
+                className="min-w-0 flex-1 block"
+              >
                 <div className="font-semibold text-black truncate flex items-center gap-2">
                   <span className="truncate">
                     {a.firstName} {a.lastName}
@@ -122,12 +126,15 @@ export default function AthletesView() {
                   )}
                 </div>
                 <div className="text-sm text-black/50 truncate">{a.email}</div>
-              </div>
+              </Link>
               <div className="shrink-0">
                 {a.trainer ? (
-                  <span className="dsc-label text-black/50">
+                  <Link
+                    href={`/admin/athletes/${a.id}`}
+                    className="dsc-label text-black/50 hover:text-black"
+                  >
                     with {a.trainer.user.name.split(' ')[0]}
-                  </span>
+                  </Link>
                 ) : (
                   <select
                     className="bg-white border border-black/20 text-black rounded-lg px-2 py-1 text-xs"

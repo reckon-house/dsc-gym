@@ -589,4 +589,115 @@ export async function discardDraft(draftId: string) {
   })
 }
 
+// ---------------- Standing weekly slots ----------------
+//
+// A standing slot says "this athlete, this trainer, every <day> at <time>,
+// for <duration> minutes." Materializing turns the next N weeks of those
+// recurring slots into concrete Session rows the engine can reason about
+// (conflict checks, calendars, etc.). The slot itself is the source of
+// truth for the recurrence rule; materialized Sessions are real
+// individual bookings that can be cancelled / moved independently.
+
+export interface MaterializeResult {
+  created: { sessionId: string; scheduledAt: string }[]
+  skipped: { date: string; reason: string }[]
+}
+
+export async function materializeStandingSlot(
+  slotId: string,
+  weeksAhead: number
+): Promise<MaterializeResult> {
+  const slot = await db.athleteStandingSlot.findUnique({
+    where: { id: slotId },
+    include: {
+      athlete: { select: { id: true, gymId: true } },
+    },
+  })
+  if (!slot || !slot.active) {
+    return { created: [], skipped: [{ date: 'n/a', reason: 'Slot not active' }] }
+  }
+  if (!slot.trainerId) {
+    return {
+      created: [],
+      skipped: [{ date: 'n/a', reason: 'Slot has no trainer assigned' }],
+    }
+  }
+
+  const gymId = slot.athlete.gymId
+  const config = await loadConfig(gymId)
+  const zone = config.timezone
+
+  const created: MaterializeResult['created'] = []
+  const skipped: MaterializeResult['skipped'] = []
+
+  // Find the next occurrence of slot.dayOfWeek (0=Sun..6=Sat) in the
+  // gym's local time, starting from today.
+  const today = startOfDayInZone(new Date(), zone)
+  const todayDow = partsInZone(today, zone).weekday
+
+  // How many days forward to land on the slot's day-of-week.
+  // 0 means today (we still include it if the time hasn't passed yet).
+  let daysAhead = (slot.dayOfWeek - todayDow + 7) % 7
+
+  for (let week = 0; week < weeksAhead; week++) {
+    // Compute the candidate date this iteration.
+    const reference = new Date(today.getTime() + (daysAhead + week * 7) * 86400_000)
+    const dayStart = startOfDayInZone(reference, zone)
+    const scheduledAt = new Date(dayStart.getTime() + slot.startMinute * 60_000)
+    const ymd = (() => {
+      const p = partsInZone(dayStart, zone)
+      return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
+    })()
+
+    // Skip past-time on the very first occurrence if today's slot already passed.
+    if (scheduledAt.getTime() < Date.now() - 60_000) {
+      skipped.push({ date: ymd, reason: 'Already in the past.' })
+      continue
+    }
+
+    // De-dupe: if a Session already exists for (trainer, athlete, scheduledAt)
+    // we don't want to create another. Could happen if the slot was already
+    // materialized once and someone re-runs.
+    const existing = await db.session.findFirst({
+      where: {
+        trainerId: slot.trainerId,
+        athleteId: slot.athleteId,
+        scheduledAt,
+        cancelled: false,
+      },
+    })
+    if (existing) {
+      skipped.push({ date: ymd, reason: 'Session already exists.' })
+      continue
+    }
+
+    const validation = await validateBooking(gymId, {
+      trainerId: slot.trainerId,
+      athleteId: slot.athleteId,
+      scheduledAt,
+      duration: slot.duration,
+    })
+    if (!validation.ok) {
+      skipped.push({
+        date: ymd,
+        reason: validation.conflicts[0]?.message ?? 'Conflict.',
+      })
+      continue
+    }
+    const session = await db.session.create({
+      data: {
+        gymId,
+        trainerId: slot.trainerId,
+        athleteId: slot.athleteId,
+        scheduledAt,
+        duration: slot.duration,
+        notes: slot.notes ? `Standing: ${slot.notes}` : 'Standing weekly',
+      },
+    })
+    created.push({ sessionId: session.id, scheduledAt: scheduledAt.toISOString() })
+  }
+
+  return { created, skipped }
+}
+
 export { DEFAULT_GYM_ID }

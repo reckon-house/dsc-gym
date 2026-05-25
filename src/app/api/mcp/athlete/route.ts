@@ -17,7 +17,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getGymTimezone, validateBooking } from '@/lib/scheduling/engine'
+import {
+  getGymTimezone,
+  suggestSlots,
+  validateBooking,
+} from '@/lib/scheduling/engine'
 import { resolveAvailabilityForRange } from '@/lib/scheduling/availability'
 import {
   dateOnlyInZone,
@@ -162,6 +166,43 @@ const TOOLS = [
         endDate: {
           type: 'string',
           description: 'YYYY-MM-DD. Defaults to 14 days from today.',
+        },
+      },
+    },
+  },
+  {
+    name: 'suggest_slots',
+    description:
+      "Find open slots with the athlete's primary trainer over a date range. " +
+      'Filters out times the trainer is already booked or outside their hours. ' +
+      'Use this before request_session when the athlete asks for "any time" or ' +
+      '"some time next week" rather than naming a specific moment. ' +
+      'All returned slots are in the gym\'s local time (America/Chicago).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        startDate: {
+          type: 'string',
+          description: 'YYYY-MM-DD. Defaults to today.',
+        },
+        endDate: {
+          type: 'string',
+          description: 'YYYY-MM-DD. Defaults to 14 days from today.',
+        },
+        duration: {
+          type: 'number',
+          description: 'Session length in minutes. Defaults to 60.',
+          enum: [30, 60],
+        },
+        preferredStart: {
+          type: 'string',
+          enum: ['morning', 'afternoon', 'evening', 'any'],
+          description:
+            'Filter to a time-of-day band: morning (<12pm), afternoon (12-5pm), evening (5pm+). Defaults to any.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max slots to return. Defaults to 20.',
         },
       },
     },
@@ -323,6 +364,73 @@ async function tool_my_trainer_availability(
   })
 }
 
+async function tool_suggest_slots(
+  athleteId: string,
+  args: {
+    startDate?: string
+    endDate?: string
+    duration?: number
+    preferredStart?: 'morning' | 'afternoon' | 'evening' | 'any'
+    limit?: number
+  }
+) {
+  const athlete = await loadAthlete(athleteId)
+  if (!athlete?.trainer) {
+    return textContent("You don't have a primary trainer assigned. Can't find slots.")
+  }
+  const zone = await getGymTimezone(DEFAULT_GYM_ID)
+  const todayLocal = startOfDayInZone(new Date(), zone)
+  const start = args.startDate ? dateOnlyInZone(args.startDate, zone) : todayLocal
+  const end = args.endDate
+    ? dateOnlyInZone(args.endDate, zone)
+    : new Date(todayLocal.getTime() + 14 * 86400_000)
+  if (!start || !end) {
+    return textContent('Invalid startDate or endDate. Use YYYY-MM-DD.')
+  }
+  const duration = args.duration ?? 60
+  const limit = Math.max(1, Math.min(args.limit ?? 20, 50))
+  const preferredStart = args.preferredStart ?? 'any'
+
+  // Walk zone-local days from start through end and union suggestSlots
+  // for each. startOfDayInZone keeps us on the right gym-local day even
+  // across DST.
+  const out: { startsAt: string; localTime: string; duration: number }[] = []
+  let cursor = start
+  let safety = 0
+  while (cursor.getTime() <= end.getTime() && safety++ < 60 && out.length < limit) {
+    const daySlots = await suggestSlots({
+      gymId: DEFAULT_GYM_ID,
+      trainerId: athlete.trainer.id,
+      date: cursor,
+      duration,
+      preferredStart,
+    })
+    // Filter out slots that are in the past (today, before now).
+    const now = Date.now()
+    for (const s of daySlots) {
+      if (s.start.getTime() <= now) continue
+      out.push({
+        startsAt: s.start.toISOString(),
+        localTime: formatHuman(s.start, zone),
+        duration,
+      })
+      if (out.length >= limit) break
+    }
+    cursor = startOfDayInZone(new Date(cursor.getTime() + 25 * 60 * 60_000), zone)
+  }
+
+  return structuredContent({
+    trainerName: athlete.trainer.user.name,
+    timezone: zone,
+    duration,
+    preferredStart,
+    note:
+      'Each `startsAt` is an absolute ISO 8601 instant. To book one, pass it ' +
+      'back as request_session.scheduledAt verbatim.',
+    slots: out,
+  })
+}
+
 async function tool_request_session(
   athleteId: string,
   args: { scheduledAt?: string; duration?: number; notes?: string }
@@ -468,6 +576,17 @@ async function callTool(
       return tool_my_trainer_availability(
         authed.athleteId,
         args as { startDate?: string; endDate?: string }
+      )
+    case 'suggest_slots':
+      return tool_suggest_slots(
+        authed.athleteId,
+        args as {
+          startDate?: string
+          endDate?: string
+          duration?: number
+          preferredStart?: 'morning' | 'afternoon' | 'evening' | 'any'
+          limit?: number
+        }
       )
     case 'request_session':
       return tool_request_session(
