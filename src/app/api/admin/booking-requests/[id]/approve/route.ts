@@ -2,7 +2,7 @@
 // clean, creates the actual Session. Marks the request approved and
 // links it to the resulting sessionId.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { getGymTimezone, validateBooking } from '@/lib/scheduling/engine'
 import { formatInZone, formatHuman } from '@/lib/scheduling/timezone'
@@ -68,10 +68,16 @@ export async function POST(
     },
   })
 
-  // Notify the athlete. Fire-and-forget — failure to send the email
-  // shouldn't fail the approval.
-  void sendApprovalEmail(request, id).catch((err) => {
-    console.error('approval email failed:', err)
+  // Notify the athlete. Use `after()` so Vercel keeps the function
+  // alive long enough for the Resend POST to finish — `void promise`
+  // alone gets killed when the response is returned. Failures are
+  // logged but never block the approval response.
+  after(async () => {
+    try {
+      await sendApprovalEmail(request, id)
+    } catch (err) {
+      console.error('approval email failed:', err)
+    }
   })
 
   return NextResponse.json({ success: true, sessionId: session.id })

@@ -1,7 +1,7 @@
 // Decline a BookingRequest. Optional reason makes its way back to the
 // athlete via their MCP client / dashboard.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { formatHuman } from '@/lib/scheduling/timezone'
@@ -44,8 +44,15 @@ export async function POST(
     },
   })
 
-  void sendDeclineEmail(request, id).catch((err) => {
-    console.error('decline email failed:', err)
+  // `after()` keeps the function alive for the Resend POST after the
+  // response is returned — `void promise` alone gets killed mid-flight
+  // on Vercel serverless.
+  after(async () => {
+    try {
+      await sendDeclineEmail(request, id)
+    } catch (err) {
+      console.error('decline email failed:', err)
+    }
   })
 
   return NextResponse.json({ success: true })
