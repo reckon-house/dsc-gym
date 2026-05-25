@@ -40,14 +40,15 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
     name: 'list_athletes',
     description:
-      'List active athletes at the gym. Optionally filter by trainer or search by name fragment. Archived athletes are excluded by default.',
+      'List active athletes at the gym. Returns id, name, email, phone, trainer, and archived flag — use these to confirm identity before destructive actions. Optionally filter by trainer or search by any identifier (name, email, or phone fragment). Archived athletes are excluded by default.',
     input_schema: {
       type: 'object',
       properties: {
         trainerId: { type: 'string', description: 'Filter to a specific trainer.' },
         nameLike: {
           type: 'string',
-          description: 'Case-insensitive substring match against first or last name.',
+          description:
+            'Case-insensitive substring match against first name, last name, email, OR phone. Useful for "find the athlete with email jp33@…" or "look up 214-555-0199".',
         },
         includeArchived: {
           type: 'boolean',
@@ -498,22 +499,28 @@ export async function dispatchTool(
       if (!includeArchived) where.archived = false
       if (typeof input.trainerId === 'string') where.trainerId = input.trainerId
       if (typeof input.nameLike === 'string') {
-        // Split on whitespace so "Marcus Chen" matches against
-        // firstName=Marcus + lastName=Chen. Each token has to land in
-        // either firstName or lastName.
+        // Each whitespace-separated token has to land in at least one of
+        // firstName / lastName / email / phone. So "Marcus Chen" needs
+        // both Marcus and Chen to hit somewhere; an email like
+        // "jp33.me@gmail.com" is a single token that hits the email
+        // column; a phone fragment like "214-555" hits phone.
         const tokens = input.nameLike.split(/\s+/).filter(Boolean)
+        const tokenWhere = (t: string) => ({
+          OR: [
+            { firstName: { contains: t, mode: 'insensitive' } },
+            { lastName: { contains: t, mode: 'insensitive' } },
+            { email: { contains: t, mode: 'insensitive' } },
+            // Phone substring: strip non-digits from the query so a user
+            // typing "214-555-0199" matches stored "+12145550199".
+            ...(t.replace(/\D+/g, '').length >= 3
+              ? [{ phone: { contains: t.replace(/\D+/g, ''), mode: 'insensitive' } }]
+              : []),
+          ],
+        })
         if (tokens.length === 1) {
-          where.OR = [
-            { firstName: { contains: tokens[0], mode: 'insensitive' } },
-            { lastName: { contains: tokens[0], mode: 'insensitive' } },
-          ]
+          Object.assign(where, tokenWhere(tokens[0]))
         } else if (tokens.length > 1) {
-          where.AND = tokens.map((t) => ({
-            OR: [
-              { firstName: { contains: t, mode: 'insensitive' } },
-              { lastName: { contains: t, mode: 'insensitive' } },
-            ],
-          }))
+          where.AND = tokens.map(tokenWhere)
         }
       }
       const athletes = await db.athlete.findMany({
@@ -525,8 +532,12 @@ export async function dispatchTool(
         id: a.id,
         firstName: a.firstName,
         lastName: a.lastName,
+        email: a.email,
+        phone: a.phone,
         trainerId: a.trainerId,
         trainerName: a.trainer?.user.name ?? null,
+        archived: a.archived,
+        emailVerified: a.emailVerified,
       }))
     }
 
