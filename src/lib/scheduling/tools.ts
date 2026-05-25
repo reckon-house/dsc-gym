@@ -11,6 +11,7 @@ import {
   commitChange,
   DEFAULT_GYM_ID,
   discardDraft,
+  getGymTimezone,
   listProposedChanges,
   listSessions,
   suggestSlots,
@@ -21,6 +22,7 @@ import {
   minutesIntoDay,
   resolveAvailabilityForDate,
 } from './availability'
+import { dateOnlyInZone, dayOfWeekInZone, startOfDayInZone } from './timezone'
 
 export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
@@ -83,13 +85,17 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
     name: 'check_availability',
     description:
-      'Validate a hypothetical booking against the engine: trainer availability, double-booking, floor cap, buffer, allowed durations, etc. Returns ok + conflicts. ALWAYS call this before proposing a booking.',
+      'Validate a hypothetical booking against the engine: trainer availability, double-booking, floor cap, buffer, allowed durations, etc. Returns ok + conflicts. ALWAYS call this before proposing a booking. IMPORTANT: scheduledAtISO MUST include a timezone offset. The gym is in America/Chicago (Central). For 9:00 AM Central on May 27 2026, send "2026-05-27T09:00:00-05:00" (CDT) or "2026-05-27T09:00:00-06:00" (CST). Sending bare "2026-05-27T09:00:00" (no offset) is interpreted as UTC and will produce false "outside availability" conflicts.',
     input_schema: {
       type: 'object',
       properties: {
         trainerId: { type: 'string' },
         athleteId: { type: 'string' },
-        scheduledAtISO: { type: 'string', description: 'ISO datetime for the proposed start.' },
+        scheduledAtISO: {
+          type: 'string',
+          description:
+            'ISO 8601 datetime for the proposed start, INCLUDING timezone offset (e.g. "2026-05-27T09:00:00-05:00" for 9am CDT).',
+        },
         duration: { type: 'number', description: 'Minutes. Defaults to gym default (60).' },
       },
       required: ['trainerId', 'athleteId', 'scheduledAtISO'],
@@ -116,13 +122,17 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
     name: 'propose_booking',
     description:
-      'Add a new-session proposal to the active draft. Does NOT commit. The owner must explicitly confirm before anything is written to the schedule.',
+      'Add a new-session proposal to the active draft. Does NOT commit. The owner must explicitly confirm before anything is written to the schedule. If a pending proposal already exists for the same trainer/athlete/scheduledAt combo, the older one is auto-discarded — useful when you need to retry with a corrected time. scheduledAtISO MUST include a timezone offset (gym is America/Chicago; for 9am Central send "2026-05-27T09:00:00-05:00" in CDT).',
     input_schema: {
       type: 'object',
       properties: {
         trainerId: { type: 'string' },
         athleteId: { type: 'string' },
-        scheduledAtISO: { type: 'string' },
+        scheduledAtISO: {
+          type: 'string',
+          description:
+            'ISO 8601 datetime WITH timezone offset (e.g. "2026-05-27T09:00:00-05:00" for 9am CDT).',
+        },
         duration: { type: 'number' },
         notes: { type: 'string' },
       },
@@ -132,12 +142,16 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
     name: 'propose_move',
     description:
-      'Propose moving an existing committed session to a new time/trainer. Does NOT commit.',
+      'Propose moving an existing committed session to a new time/trainer. Does NOT commit. newScheduledAtISO MUST include a timezone offset (gym is America/Chicago).',
     input_schema: {
       type: 'object',
       properties: {
         existingSessionId: { type: 'string' },
-        newScheduledAtISO: { type: 'string' },
+        newScheduledAtISO: {
+          type: 'string',
+          description:
+            'ISO 8601 datetime WITH timezone offset (e.g. "2026-05-27T15:00:00-05:00" for 3pm CDT).',
+        },
         newTrainerId: { type: 'string' },
         newDuration: { type: 'number' },
       },
@@ -182,6 +196,18 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'discard_proposal',
+    description:
+      'Discard a single pending proposal by id. Use this to clean up stale proposals from a previous failed attempt — e.g. when you booked something with a bad timezone, recovered with a corrected version, and now want to remove the broken one. Does not touch the corrected proposal or any other proposals.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        proposalId: { type: 'string' },
+      },
+      required: ['proposalId'],
     },
   },
   {
@@ -634,20 +660,39 @@ export async function dispatchTool(
     }
 
     case 'propose_booking': {
+      const trainerId = String(input.trainerId)
+      const athleteId = String(input.athleteId)
+      const scheduledAt = new Date(String(input.scheduledAtISO))
+      const duration = typeof input.duration === 'number' ? input.duration : 60
+
+      // Auto-prune: if a pending proposal already exists for this exact
+      // trainer+athlete+time, discard the older one. Keeps the draft
+      // clean when the model retries with a corrected timezone.
+      const pruned = await db.proposedBooking.updateMany({
+        where: {
+          draftId: ctx.draftId,
+          status: 'pending',
+          action: 'create',
+          trainerId,
+          athleteId,
+          scheduledAt,
+        },
+        data: { status: 'discarded' },
+      })
+
       const proposalId = await addProposedChange(ctx.draftId, {
         action: 'create',
-        trainerId: String(input.trainerId),
-        athleteId: String(input.athleteId),
-        scheduledAt: new Date(String(input.scheduledAtISO)),
-        duration: typeof input.duration === 'number' ? input.duration : 60,
+        trainerId,
+        athleteId,
+        scheduledAt,
+        duration,
         notes: typeof input.notes === 'string' ? input.notes : undefined,
       })
-      // Validate so the LLM gets feedback immediately.
       const validation = await validateBooking(gymId, {
-        trainerId: String(input.trainerId),
-        athleteId: String(input.athleteId),
-        scheduledAt: new Date(String(input.scheduledAtISO)),
-        duration: typeof input.duration === 'number' ? input.duration : 60,
+        trainerId,
+        athleteId,
+        scheduledAt,
+        duration,
       })
       if (!validation.ok) {
         await db.proposedBooking.update({
@@ -655,7 +700,13 @@ export async function dispatchTool(
           data: { conflictReason: validation.conflicts[0]?.message },
         })
       }
-      return { proposalId, validation }
+      return {
+        proposalId,
+        validation,
+        ...(pruned.count > 0
+          ? { replacedPriorProposals: pruned.count }
+          : {}),
+      }
     }
 
     case 'propose_move': {
@@ -697,6 +748,24 @@ export async function dispatchTool(
     case 'discard_draft': {
       await discardDraft(ctx.draftId)
       return { ok: true }
+    }
+
+    case 'discard_proposal': {
+      const proposalId = String(input.proposalId)
+      const proposal = await db.proposedBooking.findUnique({
+        where: { id: proposalId },
+      })
+      if (!proposal || proposal.draftId !== ctx.draftId) {
+        return { ok: false, error: 'Proposal not found in active draft.' }
+      }
+      if (proposal.status !== 'pending') {
+        return { ok: false, error: `Proposal already ${proposal.status}.` }
+      }
+      await db.proposedBooking.update({
+        where: { id: proposalId },
+        data: { status: 'discarded' },
+      })
+      return { ok: true, proposalId }
     }
 
     case 'set_trainer_availability': {
@@ -753,31 +822,45 @@ export async function dispatchTool(
         return { error: 'Invalid time — use HH:MM 24-hour.' }
       }
       const duration = typeof input.duration === 'number' ? input.duration : 60
-      const startDate = new Date(String(input.startDateISO))
-      // Strip time, keep just date.
-      startDate.setHours(0, 0, 0, 0)
+      const zone = await getGymTimezone(gymId)
+
+      // Parse startDate / endDate as ZONE-LOCAL midnight. Previously
+      // this used setHours which is server-local (UTC on Vercel),
+      // making "09:00" land at 4am Central — the bug Sonnet kept
+      // catching on retries.
+      const startYmd = String(input.startDateISO).slice(0, 10)
+      const startDate = dateOnlyInZone(startYmd, zone)
+      if (!startDate) {
+        return { error: 'startDateISO must be a YYYY-MM-DD or ISO date.' }
+      }
 
       let endDate: Date
       if (input.endDateISO) {
-        endDate = new Date(String(input.endDateISO))
-        endDate.setHours(23, 59, 59, 999)
+        const endYmd = String(input.endDateISO).slice(0, 10)
+        const parsed = dateOnlyInZone(endYmd, zone)
+        if (!parsed) {
+          return { error: 'endDateISO must be a YYYY-MM-DD or ISO date.' }
+        }
+        // End-of-day is one zone-day past parsed midnight, minus a ms.
+        endDate = new Date(parsed.getTime() + 24 * 60 * 60_000 - 1)
       } else if (typeof input.weeksCount === 'number') {
-        endDate = new Date(startDate)
-        endDate.setDate(endDate.getDate() + input.weeksCount * 7)
+        endDate = new Date(startDate.getTime() + input.weeksCount * 7 * 86_400_000)
       } else {
         return { error: 'Provide endDateISO or weeksCount.' }
       }
 
-      // Enumerate every matching date in range.
+      // Walk gym-local days. Constructing the instant as
+      // `zone-midnight + hh*60 + mm` minutes lands on zone-local
+      // HH:MM exactly — works through DST transitions because
+      // startOfDayInZone re-anchors each iteration.
       const slotDates: Date[] = []
-      const cursor = new Date(startDate)
-      while (cursor <= endDate) {
-        if (daysOfWeek.includes(cursor.getDay())) {
-          const at = new Date(cursor)
-          at.setHours(hh, mm, 0, 0)
-          slotDates.push(at)
+      let cursor = startDate
+      let safety = 0
+      while (cursor.getTime() <= endDate.getTime() && safety++ < 400) {
+        if (daysOfWeek.includes(dayOfWeekInZone(cursor, zone))) {
+          slotDates.push(new Date(cursor.getTime() + (hh * 60 + mm) * 60_000))
         }
-        cursor.setDate(cursor.getDate() + 1)
+        cursor = startOfDayInZone(new Date(cursor.getTime() + 25 * 60 * 60_000), zone)
       }
 
       if (slotDates.length === 0) {
