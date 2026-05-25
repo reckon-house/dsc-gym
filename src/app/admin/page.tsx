@@ -397,38 +397,44 @@ function AlertBox({
   rows,
   trainers,
 }: {
+  // Kept for API compatibility with existing callers — both tones now
+  // render the same brand-faint-grey look as the booking-requests box.
+  // The only difference is the tiny dot color, which we keep so the
+  // walk-ins (transient, in-the-moment) and new-registrations (more
+  // persistent admin queue) are still glance-distinguishable.
   tone: 'orange' | 'blue'
   label: string
   rows: AlertRow[]
   trainers: TrainerOption[]
 }) {
-  const cls = {
-    orange: { bg: 'bg-orange-50', border: 'border-orange-200', dot: 'bg-orange-500', text: 'text-orange-900' },
-    blue: { bg: 'bg-blue-50', border: 'border-blue-200', dot: 'bg-blue-500', text: 'text-blue-900' },
-  }[tone]
+  // Faint-grey card matches the brand. Dot is the only color hint, and
+  // it's saturated enough to read at a glance without screaming.
+  const dotClass = tone === 'orange' ? 'bg-amber-500' : 'bg-black'
 
   return (
-    <div
-      className={`px-4 py-2.5 rounded-2xl border ${cls.bg} ${cls.border} max-w-3xl mx-auto`}
-    >
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
-        <span className={`dsc-label ${cls.text}`}>{label}</span>
+    <div className="px-4 py-3 rounded-2xl bg-black/[0.05] border border-black/10 max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} aria-hidden />
+        <span className="dsc-label text-black">{label}</span>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-2">
         {rows.map((r) => (
           <div
             key={r.id}
-            className="flex items-center justify-between gap-2 text-sm text-black"
+            className="bg-white rounded-2xl p-3 flex items-center gap-3"
           >
-            <span className="truncate">
-              {r.primary}
-              {r.secondary && (
-                <span className="ml-2 text-xs text-black/50">{r.secondary}</span>
-              )}
-            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-black truncate">
+                <span className="font-medium">{r.primary}</span>
+                {r.secondary && (
+                  <span className="ml-2 text-xs text-black/50">
+                    {r.secondary}
+                  </span>
+                )}
+              </div>
+            </div>
             <select
-              className="bg-white border border-black/20 text-black rounded px-2 py-0.5 text-xs"
+              className="shrink-0 bg-black/5 border-0 text-black rounded-full px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-black/20"
               defaultValue=""
               onChange={(e) => e.target.value && r.onAssign(e.target.value)}
               disabled={r.pending}
