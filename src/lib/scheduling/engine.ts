@@ -160,11 +160,22 @@ export async function validateBooking(
     const sEnd = sStart + s.duration * 60_000
     const overlap = start.getTime() < sEnd + bufferMs && end.getTime() > sStart - bufferMs
     if (overlap) {
-      conflicts.push({
-        kind: config.bufferMinutes && (start.getTime() >= sEnd || end.getTime() <= sStart)
+      const kind: 'BUFFER_VIOLATION' | 'TRAINER_DOUBLE_BOOKED' =
+        config.bufferMinutes && (start.getTime() >= sEnd || end.getTime() <= sStart)
           ? 'BUFFER_VIOLATION'
-          : 'TRAINER_DOUBLE_BOOKED',
-        message: `${trainer.user.name} is already with ${s.athlete.firstName} ${s.athlete.lastName} ${formatTime(new Date(sStart), zone)} – ${formatTime(new Date(sEnd), zone)}.`,
+          : 'TRAINER_DOUBLE_BOOKED'
+      const window = `${formatTime(new Date(sStart), zone)} – ${formatTime(new Date(sEnd), zone)}`
+      conflicts.push({
+        kind,
+        // Admin-facing: includes the other athlete's name so Jordan can
+        // coordinate.
+        message: `${trainer.user.name} is already with ${s.athlete.firstName} ${s.athlete.lastName} ${window}.`,
+        // Athlete-facing: same trainer + same time window, NO other-
+        // athlete identity.
+        publicMessage:
+          kind === 'BUFFER_VIOLATION'
+            ? `${trainer.user.name} has a session right next to that slot (${window}). The gym wants a buffer between sessions.`
+            : `${trainer.user.name} is already booked ${window}.`,
         details: { conflictingSessionId: s.id },
       })
     }

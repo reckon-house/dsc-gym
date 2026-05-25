@@ -51,7 +51,11 @@ export type ConflictKind =
 
 export interface Conflict {
   kind: ConflictKind
+  // Full message for admin/staff use. May reference other athletes by name.
   message: string
+  // Sanitized variant safe to show to athletes via the MCP server.
+  // Defaults to message when no PII is present.
+  publicMessage?: string
   details?: Record<string, unknown>
 }
 

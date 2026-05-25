@@ -367,6 +367,16 @@ async function tool_request_session(
   })
 
   const zone = await getGymTimezone(DEFAULT_GYM_ID)
+  // Athlete-facing conflict text MUST NOT name other athletes. The engine
+  // attaches a sanitized `publicMessage` to any conflict that would leak
+  // another client's identity; we surface that here, never the full
+  // `message`. Defense-in-depth: fall back to a generic string if no
+  // sanitized version was provided.
+  const athleteSafeConflicts = validation.ok
+    ? []
+    : validation.conflicts.map(
+        (c) => c.publicMessage ?? 'That slot has a conflict the gym needs to review.'
+      )
   return structuredContent({
     requestId: requestRow.id,
     status: 'pending',
@@ -375,7 +385,7 @@ async function tool_request_session(
     timezone: zone,
     duration,
     trainerName: athlete.trainer.user.name,
-    conflicts: validation.ok ? [] : validation.conflicts.map((c) => c.message),
+    conflicts: athleteSafeConflicts,
     message: validation.ok
       ? `Request submitted to ${athlete.trainer.user.name} for ${formatHuman(scheduledAt, zone)}. You'll hear back once it's approved.`
       : `Request submitted for ${formatHuman(scheduledAt, zone)} with potential conflicts the gym owner will review.`,
