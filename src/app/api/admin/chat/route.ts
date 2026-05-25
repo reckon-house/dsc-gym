@@ -15,8 +15,23 @@ import { SCHEDULING_TOOLS, dispatchTool } from '@/lib/scheduling/tools'
 // orchestration, not deep reasoning. The engine is the authority, so
 // the model isn't load-bearing. CLAUDE_MODEL env var lets us flip back
 // to Opus or any other model without a deploy.
+// Vercel function timeout. Default on Pro is 60s; max is 300s. Bulk
+// scheduling can need a lot of round-trips, so we ask Vercel for the
+// full ceiling. The wall-clock guard below stops us before Vercel
+// would kill the function uncleanly.
+export const maxDuration = 300
+
 const MODEL_ID = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
-const MAX_TOOL_ROUNDS = 8
+// A real bulk request (e.g. "book these 12 sessions for me") can fan
+// out to 30+ tool calls — each item is at minimum check_availability +
+// propose_booking, plus athlete/trainer lookups and the occasional
+// add_athlete. 50 is comfortably above any realistic bulk and the
+// time guard below kicks in first anyway.
+const MAX_TOOL_ROUNDS = 50
+
+// Stop looping ~20s before Vercel's hard kill so we have time to ask
+// the model for a clean wrap-up summary instead of dying mid-loop.
+const WALL_CLOCK_BUDGET_MS = 280_000
 
 interface StoredMessage {
   role: 'user' | 'assistant'
@@ -162,12 +177,23 @@ export async function POST(request: NextRequest) {
     const dynamicContext = `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)`
 
     const anthropic = getAnthropic()
+    const startedAt = Date.now()
 
     let assistantBlocks: Anthropic.Messages.ContentBlock[] = []
     let stopReason: string | null = null
     let round = 0
 
     while (round < MAX_TOOL_ROUNDS) {
+      // Wall-clock guard. If we're past the time budget, bail out of
+      // the tool loop and fall through to the wrap-up summary turn —
+      // that way the conversation ends cleanly even on giant bulks.
+      if (Date.now() - startedAt > WALL_CLOCK_BUDGET_MS) {
+        console.warn(
+          `[chat] wall-clock budget hit at round ${round} (${Date.now() - startedAt}ms) — wrapping up`
+        )
+        stopReason = 'tool_use' // forces wrap-up branch below
+        break
+      }
       round++
       const resp = await anthropic.messages.create({
         model: MODEL_ID,
@@ -264,6 +290,44 @@ export async function POST(request: NextRequest) {
       messages.push({
         role: 'user',
         content: toolResults as unknown as Anthropic.Messages.ContentBlockParam[],
+      })
+    }
+
+    // If we exited the loop while the model was still calling tools,
+    // the conversation has a trailing tool_result without a closing
+    // assistant text turn. Run one more API call WITHOUT tools so the
+    // model is forced to produce a final summary instead of more
+    // tool_use blocks. Keeps the persisted draft well-formed for the
+    // next turn.
+    if (stopReason === 'tool_use') {
+      const wrapUp = await anthropic.messages.create({
+        model: MODEL_ID,
+        max_tokens: 1024,
+        system: [
+          { type: 'text', text: SYSTEM_INSTRUCTIONS },
+          { type: 'text', text: staticContext },
+          {
+            type: 'text',
+            text:
+              dynamicContext +
+              '\n\nNote: You hit the per-turn tool-call budget. ' +
+              'Summarize for the owner what got done, what is pending in the draft, ' +
+              'and what still needs to be addressed. Do NOT call any more tools.',
+          },
+        ],
+        // No tools — forces a text turn.
+        messages: messages as Anthropic.Messages.MessageParam[],
+      })
+      const wrapBlocks = wrapUp.content
+      stopReason = wrapUp.stop_reason
+      assistantBlocks = wrapBlocks
+      await db.chatMessage.create({
+        data: {
+          draftId,
+          role: 'assistant',
+          content: extractText(wrapBlocks),
+          toolCalls: wrapBlocks as unknown as object,
+        },
       })
     }
 
