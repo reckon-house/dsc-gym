@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import {
+  RequestActionSheet,
+  type RequestSummary,
+} from './_components/RequestActionSheet'
 
 interface WalkIn {
   id: string
@@ -61,6 +65,11 @@ export default function AdminHome() {
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([])
   const [assigning, setAssigning] = useState<string | null>(null)
   const [resolvingReq, setResolvingReq] = useState<string | null>(null)
+  const [sheet, setSheet] = useState<
+    | null
+    | { kind: 'decline'; request: RequestSummary; suggestedReason?: string }
+    | { kind: 'conflict'; request: RequestSummary; conflicts: string[] }
+  >(null)
 
   const loadAuxiliary = useCallback(async () => {
     const [t, w, u, br] = await Promise.all([
@@ -75,30 +84,69 @@ export default function AdminHome() {
     if (br.success) setBookingRequests(br.data)
   }, [])
 
-  async function approveRequest(id: string) {
-    setResolvingReq(id)
-    const res = await fetch(`/api/admin/booking-requests/${id}/approve`, {
-      method: 'POST',
-    })
-    const data = await res.json()
-    if (!data.success) {
-      const reasons = data.conflicts?.map((c: { message: string }) => c.message).join('\n')
-      alert(`Can't approve: ${reasons || data.error}`)
+  function summarizeRequest(r: BookingRequest): RequestSummary {
+    return {
+      id: r.id,
+      athleteName: r.athleteName,
+      trainerName: r.trainerName,
+      when: new Date(r.scheduledAt).toLocaleString('en-US', {
+        timeZone: 'America/Chicago',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+      duration: r.duration,
     }
-    await loadAuxiliary()
-    setResolvingReq(null)
   }
 
-  async function declineRequest(id: string) {
-    const reason = prompt('Optional reason to send the athlete:') ?? undefined
+  async function approveRequest(id: string) {
     setResolvingReq(id)
-    await fetch(`/api/admin/booking-requests/${id}/decline`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
-    })
-    await loadAuxiliary()
-    setResolvingReq(null)
+    try {
+      const res = await fetch(`/api/admin/booking-requests/${id}/approve`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!data.success) {
+        const conflicts: string[] =
+          data.conflicts?.map((c: { message: string }) => c.message) ?? [
+            data.error ?? 'Unknown error.',
+          ]
+        const target = bookingRequests.find((r) => r.id === id)
+        if (target) {
+          setSheet({
+            kind: 'conflict',
+            request: summarizeRequest(target),
+            conflicts,
+          })
+        }
+      }
+      await loadAuxiliary()
+    } finally {
+      setResolvingReq(null)
+    }
+  }
+
+  function declineRequest(id: string) {
+    const target = bookingRequests.find((r) => r.id === id)
+    if (!target) return
+    setSheet({ kind: 'decline', request: summarizeRequest(target) })
+  }
+
+  async function submitDecline(id: string, reason: string | null) {
+    setResolvingReq(id)
+    try {
+      await fetch(`/api/admin/booking-requests/${id}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      })
+      await loadAuxiliary()
+      setSheet(null)
+    } finally {
+      setResolvingReq(null)
+    }
   }
 
   useEffect(() => {
@@ -242,6 +290,17 @@ export default function AdminHome() {
           />
         </div>
       </div>
+
+      {sheet && (
+        <RequestActionSheet
+          mode={sheet}
+          onClose={() => setSheet(null)}
+          onDeclineSubmit={submitDecline}
+          onConflictDecline={(request, suggestedReason) =>
+            setSheet({ kind: 'decline', request, suggestedReason })
+          }
+        />
+      )}
     </div>
   )
 }
