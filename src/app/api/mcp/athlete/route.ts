@@ -131,6 +131,39 @@ function structuredContent(payload: unknown) {
 
 const TOOLS = [
   {
+    name: 'gym_overview',
+    description:
+      "Get general information about Dallas Sport Collective — mission, hours, locations, contact info, and a high-level list of services. Use this for questions like 'what is DSC?', 'where are you located?', 'when are you open?', 'how do I contact the gym?'.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_services',
+    description:
+      'List all training programs and services DSC offers — strength & conditioning, football, track, basketball, physical therapy, speed work, nutrition, adaptive training, prenatal/postnatal, menopause programming, Pro Day / Combine prep, etc. Each entry has a short summary. Use this for questions like \'what does the gym offer?\', \'do you do nutrition coaching?\', \'is there physical therapy on site?\'.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_trainers',
+    description:
+      'List all active DSC trainers with their title and a one-line description of what they specialize in. Use this when the athlete wants to know who works at the gym, e.g. "who are the trainers?", "who could help me with X?". For a full bio of a specific trainer, follow up with trainer_bio.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'trainer_bio',
+    description:
+      'Get a specific trainer\'s full bio, specialties, certifications, and education. Match by name (case-insensitive substring against first name, e.g. "Justin" or "Sara"). Use for questions like "tell me about Justin", "what are Sara\'s certifications?", "who would be best for speed training?" (call list_trainers first for the latter, then trainer_bio for the most relevant one).',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: {
+          type: 'string',
+          description: "Trainer's first name (case-insensitive). E.g. 'Justin'.",
+        },
+      },
+    },
+  },
+  {
     name: 'my_sessions',
     description:
       "List the athlete's sessions. Defaults to upcoming (next 30 days). " +
@@ -267,6 +300,80 @@ async function loadAthlete(athleteId: string) {
     include: {
       trainer: { include: { user: { select: { name: true } } } },
     },
+  })
+}
+
+// ---------------- Public gym info tools ----------------
+// These don't take athleteId — they're scoped to the gym itself. We
+// pass it through for symmetry with the rest of the dispatch.
+
+async function tool_gym_overview() {
+  const gym = await db.gym.findUnique({ where: { id: DEFAULT_GYM_ID } })
+  if (!gym) return textContent('Gym info not found.')
+  return structuredContent({
+    name: gym.name,
+    tagline: gym.tagline,
+    mission: gym.mission,
+    about: gym.about,
+    hours: gym.hoursJson,
+    locations: gym.locationsJson,
+    contact: gym.contactJson,
+    facilities: gym.facilitiesText,
+    timezone: gym.timezone,
+    note: 'Times are all in America/Chicago.',
+  })
+}
+
+async function tool_list_services() {
+  const gym = await db.gym.findUnique({
+    where: { id: DEFAULT_GYM_ID },
+    select: { servicesJson: true },
+  })
+  return structuredContent({
+    services: gym?.servicesJson ?? [],
+  })
+}
+
+async function tool_list_trainers_public() {
+  const trainers = await db.trainer.findMany({
+    where: { gymId: DEFAULT_GYM_ID, archived: false },
+    include: { user: { select: { name: true } } },
+    orderBy: [{ user: { name: 'asc' } }],
+  })
+  return structuredContent({
+    trainers: trainers.map((t) => ({
+      id: t.id,
+      name: t.user.name,
+      title: t.title,
+      // First few specialties as a teaser; full list is in trainer_bio.
+      specialtiesPreview: t.specialties.slice(0, 4),
+    })),
+  })
+}
+
+async function tool_trainer_bio(args: { name?: string }) {
+  if (!args.name) return textContent('name is required.')
+  const needle = args.name.trim().toLowerCase()
+  // Match against first-name token of User.name (e.g. "Justin" → "Justin").
+  const trainers = await db.trainer.findMany({
+    where: { gymId: DEFAULT_GYM_ID, archived: false },
+    include: { user: { select: { name: true } } },
+  })
+  const match = trainers.find((t) =>
+    t.user.name.toLowerCase().split(/\s+/).some((tok) => tok.startsWith(needle))
+  )
+  if (!match) {
+    return textContent(
+      `No trainer found matching '${args.name}'. Call list_trainers to see who's on the team.`
+    )
+  }
+  return structuredContent({
+    name: match.user.name,
+    title: match.title,
+    bio: match.bio,
+    specialties: match.specialties,
+    certifications: match.certifications,
+    education: match.education,
   })
 }
 
@@ -568,6 +675,14 @@ async function callTool(
   args: Record<string, unknown>
 ) {
   switch (name) {
+    case 'gym_overview':
+      return tool_gym_overview()
+    case 'list_services':
+      return tool_list_services()
+    case 'list_trainers':
+      return tool_list_trainers_public()
+    case 'trainer_bio':
+      return tool_trainer_bio(args as { name?: string })
     case 'my_sessions':
       return tool_my_sessions(authed.athleteId, args as { range?: string })
     case 'my_trainer':

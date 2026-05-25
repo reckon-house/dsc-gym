@@ -31,6 +31,34 @@ interface AthleteSession {
   email: string
 }
 
+interface TrainerProfile {
+  id: string
+  name: string
+  title: string | null
+  bio: string | null
+  specialties: string[]
+  certifications: string[]
+  education: string | null
+}
+
+interface ServiceEntry {
+  slug: string
+  name: string
+  summary: string
+}
+
+interface GymOverview {
+  name: string
+  tagline: string | null
+  mission: string | null
+  about: string | null
+  hours: { summary?: string } | null
+  locations: { name: string; city: string; state: string; comingSoon?: boolean }[] | null
+  contact: { email?: string; phone?: string; website?: string } | null
+  services: ServiceEntry[] | null
+  facilities: string | null
+}
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function isSameDay(a: Date, b: Date) {
@@ -46,6 +74,8 @@ export default function AthleteDashboard() {
   const [athlete, setAthlete] = useState<AthleteSession | null>(null)
   const [sessions, setSessions] = useState<UpcomingSession[]>([])
   const [requests, setRequests] = useState<BookingRequest[]>([])
+  const [gymOverview, setGymOverview] = useState<GymOverview | null>(null)
+  const [trainers, setTrainers] = useState<TrainerProfile[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -57,14 +87,20 @@ export default function AthleteDashboard() {
         return
       }
       setAthlete(d.athlete)
-      const [sRes, rRes] = await Promise.all([
+      const [sRes, rRes, gRes] = await Promise.all([
         fetch('/api/athletes/me/sessions'),
         fetch('/api/athletes/me/requests'),
+        fetch('/api/gym/overview'),
       ])
       const sData = await sRes.json()
       if (sData.success) setSessions(sData.data)
       const rData = await rRes.json()
       if (rData.success) setRequests(rData.data)
+      const gData = await gRes.json()
+      if (gData.success) {
+        setGymOverview(gData.data.gym)
+        setTrainers(gData.data.trainers)
+      }
       setLoading(false)
     })()
   }, [router])
@@ -217,8 +253,19 @@ export default function AthleteDashboard() {
           </div>
         )}
 
+        {/* Meet the team */}
+        {trainers.length > 0 && <TrainersSection trainers={trainers} />}
+
+        {/* What we offer */}
+        {gymOverview?.services && gymOverview.services.length > 0 && (
+          <ServicesSection services={gymOverview.services} />
+        )}
+
         {/* Connect to AI — MCP */}
         <ConnectToAI />
+
+        {/* Gym info footer */}
+        {gymOverview && <GymInfoFooter overview={gymOverview} />}
       </div>
     </div>
   )
@@ -407,6 +454,203 @@ function ConnectToAI() {
             </li>
           </ol>
         </details>
+      </div>
+    </div>
+  )
+}
+
+// --------- Meet the trainers ---------
+
+function TrainersSection({ trainers }: { trainers: TrainerProfile[] }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  return (
+    <div className="mt-8">
+      <div className="dsc-label text-black/40 mb-1">Meet the team</div>
+      <h2 className="dsc-headline text-2xl text-black mb-3 leading-tight">
+        Your trainers.
+      </h2>
+      <div className="space-y-2">
+        {trainers.map((t) => {
+          const isOpen = openId === t.id
+          return (
+            <div
+              key={t.id}
+              className="rounded-2xl bg-black/[0.04] overflow-hidden transition-colors"
+            >
+              <button
+                onClick={() => setOpenId(isOpen ? null : t.id)}
+                className="w-full text-left p-4 flex items-center gap-3 hover:bg-black/[0.06]"
+              >
+                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center dsc-headline text-base shrink-0">
+                  {t.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-black font-medium truncate">
+                    {t.name.split(' ')[0]}
+                  </div>
+                  {t.title && (
+                    <div className="text-xs text-black/60 truncate">
+                      {t.title}
+                    </div>
+                  )}
+                </div>
+                <span className="dsc-label text-black/40 shrink-0">
+                  {isOpen ? '–' : '+'}
+                </span>
+              </button>
+              {isOpen && (
+                <div className="px-4 pb-5 pt-1 text-sm text-black/80 space-y-3">
+                  {t.bio && (
+                    <p className="leading-relaxed">{t.bio}</p>
+                  )}
+                  {t.specialties.length > 0 && (
+                    <div>
+                      <div className="dsc-label text-black/40 mb-1.5">
+                        Specialties
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {t.specialties.map((s, i) => (
+                          <span
+                            key={i}
+                            className="text-xs bg-white text-black px-2.5 py-1 rounded-full"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {t.certifications.length > 0 && (
+                    <div>
+                      <div className="dsc-label text-black/40 mb-1.5">
+                        Certifications
+                      </div>
+                      <ul className="text-xs text-black/70 space-y-0.5 list-disc list-inside">
+                        {t.certifications.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {t.education && (
+                    <div>
+                      <div className="dsc-label text-black/40 mb-1.5">
+                        Education
+                      </div>
+                      <p className="text-xs text-black/70 leading-relaxed">
+                        {t.education}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// --------- What we offer ---------
+
+function ServicesSection({ services }: { services: ServiceEntry[] }) {
+  return (
+    <div className="mt-8">
+      <div className="dsc-label text-black/40 mb-1">What we offer</div>
+      <h2 className="dsc-headline text-2xl text-black mb-3 leading-tight">
+        Programs &amp; services.
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {services.map((s) => (
+          <div
+            key={s.slug}
+            className="rounded-2xl bg-black/[0.04] p-4"
+          >
+            <div className="text-black font-medium mb-1">{s.name}</div>
+            <p className="text-xs text-black/60 leading-relaxed">
+              {s.summary}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// --------- Gym info footer ---------
+
+function GymInfoFooter({ overview }: { overview: GymOverview }) {
+  return (
+    <div className="mt-8 mb-4 rounded-3xl bg-black/[0.04] p-5">
+      <div className="dsc-label text-black/40 mb-1">About DSC</div>
+      {overview.tagline && (
+        <h2 className="dsc-headline text-xl text-black mb-3 leading-tight">
+          {overview.tagline}
+        </h2>
+      )}
+      {overview.about && (
+        <p className="text-sm text-black/70 leading-relaxed mb-4">
+          {overview.about}
+        </p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {overview.hours?.summary && (
+          <div>
+            <div className="dsc-label text-black/40 mb-1">Hours</div>
+            <div className="text-sm text-black/80">{overview.hours.summary}</div>
+          </div>
+        )}
+        {overview.locations && overview.locations.length > 0 && (
+          <div>
+            <div className="dsc-label text-black/40 mb-1">Locations</div>
+            <ul className="text-sm text-black/80 space-y-0.5">
+              {overview.locations.map((l) => (
+                <li key={l.name}>
+                  {l.name}, {l.state}
+                  {l.comingSoon && (
+                    <span className="dsc-label text-black/40 ml-1">
+                      (soon)
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {overview.contact && (
+          <div className="sm:col-span-2">
+            <div className="dsc-label text-black/40 mb-1">Contact</div>
+            <div className="text-sm text-black/80 flex flex-wrap gap-x-4 gap-y-0.5">
+              {overview.contact.email && (
+                <a
+                  href={`mailto:${overview.contact.email}`}
+                  className="hover:text-black"
+                >
+                  {overview.contact.email}
+                </a>
+              )}
+              {overview.contact.phone && (
+                <a
+                  href={`tel:${overview.contact.phone}`}
+                  className="hover:text-black"
+                >
+                  {overview.contact.phone}
+                </a>
+              )}
+              {overview.contact.website && (
+                <a
+                  href={overview.contact.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-black"
+                >
+                  Website
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

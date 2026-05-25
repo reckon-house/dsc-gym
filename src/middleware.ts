@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   '/api/athletes/me',
   '/api/athletes/parse-registration',
   '/api/waiver',
+  '/api/gym',
   // OAuth + MCP discovery & flow — these auth themselves (bearer / PKCE)
   // and must be reachable without our staff session cookie.
   '/.well-known/oauth-authorization-server',

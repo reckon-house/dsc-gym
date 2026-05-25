@@ -14,6 +14,17 @@ model Gym {
   timezone  String   @default("America/Chicago")
   createdAt DateTime @default(now())
 
+  // Public-facing info — surfaced via MCP (gym_overview tool) and the
+  // athlete dashboard. All optional so older test gyms still work.
+  tagline       String?
+  mission       String? // Short philosophy paragraph
+  about         String? // Longer pitch / description
+  hoursJson     Json?   // { mon: { open: "07:00", close: "19:00" }, ... }
+  locationsJson Json?   // [{ name, city, state, comingSoon? }]
+  contactJson   Json?   // { email, phone, altEmail? }
+  servicesJson  Json?   // [{ slug, name, summary }]
+  facilitiesText String?
+
   config           GymConfig?
   trainers         Trainer[]
   athletes         Athlete[]
@@ -57,6 +68,13 @@ model Trainer {
   archived Boolean  @default(false)
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   gym      Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  // Public bio surfaced via MCP (trainer_bio tool) and dashboard.
+  title          String?  // "Founder + Trainer", "Physical Therapist & Trainer", etc.
+  bio            String?  // Full paragraph
+  specialties    String[] // ["speed", "return to sport", "adaptive"]
+  certifications String[] // ["CSCS", "NASM CPT", ...]
+  education      String?  // Free-form for degrees / formal education
 
   athletes        Athlete[]
   sessions        Session[]
