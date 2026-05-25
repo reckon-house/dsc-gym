@@ -57,6 +57,10 @@ interface GymOverview {
   contact: { email?: string; phone?: string; website?: string } | null
   services: ServiceEntry[] | null
   facilities: string | null
+  // Canonical, publicly-reachable URL of the MCP server. Server-side
+  // computed so it's always correct even when the dashboard is being
+  // viewed on localhost.
+  mcpUrl: string
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -262,7 +266,7 @@ export default function AthleteDashboard() {
         )}
 
         {/* Connect to AI — MCP */}
-        <ConnectToAI />
+        <ConnectToAI mcpUrl={gymOverview?.mcpUrl ?? ''} />
 
         {/* Gym info footer */}
         {gymOverview && <GymInfoFooter overview={gymOverview} />}
@@ -358,14 +362,13 @@ function RequestActivity({ requests }: { requests: BookingRequest[] }) {
   )
 }
 
-function ConnectToAI() {
-  const [mcpUrl, setMcpUrl] = useState('')
-
-  useEffect(() => {
-    setMcpUrl(`${window.location.origin}/api/mcp/athlete`)
-  }, [])
+function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
+  // mcpUrl arrives server-computed via /api/gym/overview, so this is
+  // always the publicly-reachable production URL even when the page
+  // itself is being served from localhost.
 
   async function copyUrl() {
+    if (!mcpUrl) return
     try {
       await navigator.clipboard.writeText(mcpUrl)
     } catch {
