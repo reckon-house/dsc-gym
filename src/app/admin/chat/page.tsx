@@ -47,6 +47,19 @@ export default function ChatView() {
     loadChat()
   }, [loadChat])
 
+  // While a message is in flight the server may be looping through 10+
+  // tool calls — each round persists an assistant turn to the DB before
+  // the next API call. Poll the GET endpoint so those intermediate
+  // turns appear as they happen instead of waiting for the final POST
+  // response (which can be 30-90s on a bulk request).
+  useEffect(() => {
+    if (!pending) return
+    const interval = setInterval(() => {
+      loadChat().catch(() => {})
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [pending, loadChat])
+
   async function sendMessage(text: string) {
     setPending(true)
     setMessages((m) => [
