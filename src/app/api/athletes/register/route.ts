@@ -8,6 +8,7 @@ import {
   sendEmail,
 } from '@/lib/email'
 import { normalizePhone } from '@/lib/phone'
+import { publicBaseUrl } from '@/lib/oauth/util'
 
 // POST /api/athletes/register - Public athlete self-registration.
 // Creates an unverified athlete and sends a verification email.
@@ -102,15 +103,21 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Build verification URL. We use the request origin so it works
-    // in dev (localhost), preview, and production.
-    const origin = request.headers.get('origin') ?? `http://${request.headers.get('host') ?? 'localhost:3000'}`
-    const verificationUrl = `${origin}/athlete/verify?token=${token}`
+    // Build verification URL. publicBaseUrl() respects env overrides
+    // (OAUTH_PUBLIC_URL / NEXT_PUBLIC_BASE_URL) and the Vercel-injected
+    // VERCEL_PROJECT_PRODUCTION_URL before falling back to the request
+    // origin. Same helper the booking-request emails use, so a dev
+    // setup that points NEXT_PUBLIC_BASE_URL at prod yields email links
+    // that actually work on a phone.
+    const origin = request.headers.get('origin')
+    const base = publicBaseUrl(origin)
+    const verificationUrl = `${base}/athlete/verify?token=${token}`
 
-    // Brand logo for the email header. Env override lets us point at a CDN
-    // or pin to a specific deploy URL without code changes.
-    const logoUrl = process.env.EMAIL_LOGO_URL ?? `${origin}/logo-mark.png`
-    const heroImageUrl = process.env.EMAIL_HERO_URL ?? `${origin}/email-hero.jpg`
+    // Brand assets for the email. Env overrides take precedence so we
+    // can host these on a CDN or pin to a specific deploy URL without
+    // code changes.
+    const logoUrl = process.env.EMAIL_LOGO_URL ?? `${base}/logo-mark.png`
+    const heroImageUrl = process.env.EMAIL_HERO_URL ?? `${base}/email-hero.jpg`
 
     const email_content = buildVerificationEmail({
       firstName: athlete.firstName,
