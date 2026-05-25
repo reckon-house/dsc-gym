@@ -194,7 +194,74 @@ export default function AthleteDashboard() {
             })}
           </div>
         )}
+
+        {/* Connect to AI — MCP */}
+        <ConnectToAI />
       </div>
+    </div>
+  )
+}
+
+function ConnectToAI() {
+  const [mcpUrl, setMcpUrl] = useState('')
+
+  useEffect(() => {
+    setMcpUrl(`${window.location.origin}/api/mcp/athlete`)
+  }, [])
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(mcpUrl)
+    } catch {
+      /* clipboard might be blocked — fallthrough */
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded-3xl bg-black/[0.04] p-5">
+      <div className="dsc-label text-black/40 mb-1">Connect to AI</div>
+      <h2 className="dsc-headline text-2xl text-black mb-2 leading-tight">
+        Schedule by chat.
+      </h2>
+      <p className="text-sm text-black/70 mb-4">
+        Add DSC to Claude.ai (or any MCP-compatible client) and ask your AI to
+        check your schedule, find a slot with your trainer, or request a
+        session. The gym owner still approves any new bookings.
+      </p>
+
+      <div className="rounded-2xl bg-white p-3 mb-3">
+        <div className="dsc-label text-black/40 mb-1">MCP server URL</div>
+        <div className="flex items-center gap-2">
+          <code className="text-xs text-black truncate flex-1 font-mono">
+            {mcpUrl || '…'}
+          </code>
+          <button
+            onClick={copyUrl}
+            className="shrink-0 h-8 px-3 bg-black text-white text-xs rounded-full dsc-headline"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <details className="text-sm text-black/70">
+        <summary className="cursor-pointer text-black/80 select-none">
+          How to add it to Claude.ai
+        </summary>
+        <ol className="mt-3 pl-5 list-decimal space-y-1.5 text-black/70">
+          <li>In Claude.ai, open Settings → Connectors → Add custom connector.</li>
+          <li>Paste the MCP URL above.</li>
+          <li>
+            Claude will redirect you here to sign in and approve access — same
+            login you&rsquo;re using right now.
+          </li>
+          <li>
+            Once connected, ask Claude things like <em>&ldquo;what&rsquo;s on my
+            schedule next week?&rdquo;</em> or <em>&ldquo;request a session with my
+            trainer Tuesday at 4pm.&rdquo;</em>
+          </li>
+        </ol>
+      </details>
     </div>
   )
 }

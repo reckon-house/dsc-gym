@@ -19,6 +19,15 @@ const PUBLIC_PATHS = [
   '/api/athletes/me',
   '/api/athletes/parse-registration',
   '/api/waiver',
+  // OAuth + MCP discovery & flow — these auth themselves (bearer / PKCE)
+  // and must be reachable without our staff session cookie.
+  '/.well-known/oauth-authorization-server',
+  '/.well-known/oauth-protected-resource',
+  '/oauth/authorize',
+  '/oauth/register',
+  '/oauth/token',
+  '/oauth/revoke',
+  '/api/mcp',
 ]
 
 // Routes only accessible by specific roles

@@ -22,6 +22,7 @@ model Gym {
   walkIns          WalkIn[]
   waiverSignatures WaiverSignature[]
   draftSchedules   DraftSchedule[]
+  bookingRequests  BookingRequest[]
 }
 
 model GymConfig {
@@ -57,10 +58,11 @@ model Trainer {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   gym      Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
 
-  athletes      Athlete[]
-  sessions      Session[]
-  availability  TrainerAvailability[]
-  exceptions    AvailabilityException[]
+  athletes        Athlete[]
+  sessions        Session[]
+  availability    TrainerAvailability[]
+  exceptions      AvailabilityException[]
+  bookingRequests BookingRequest[]
 
   @@index([gymId])
   @@index([archived])
@@ -109,11 +111,15 @@ model Athlete {
   waiverSignedAt               DateTime?
   archived                     Boolean   @default(false)
 
-  sessions          Session[]
-  sessionAttendees  SessionAttendee[]
-  checkIns          CheckIn[]
-  standingSlots     AthleteStandingSlot[]
-  createdAt         DateTime  @default(now())
+  sessions             Session[]
+  sessionAttendees     SessionAttendee[]
+  checkIns             CheckIn[]
+  standingSlots        AthleteStandingSlot[]
+  oauthAuthCodes       OAuthAuthorizationCode[]
+  oauthAccessTokens    OAuthAccessToken[]
+  oauthRefreshTokens   OAuthRefreshToken[]
+  bookingRequests      BookingRequest[]
+  createdAt            DateTime  @default(now())
 
   @@index([gymId])
   @@index([archived])
@@ -150,13 +156,14 @@ model Session {
   notes             String?
   createdAt         DateTime  @default(now())
 
-  gym           Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  trainer       Trainer   @relation(fields: [trainerId], references: [id])
-  athlete       Athlete   @relation(fields: [athleteId], references: [id])
-  attendees     SessionAttendee[]
-  parentSession Session?  @relation("RecurringSessions", fields: [parentSessionId], references: [id])
-  childSessions Session[] @relation("RecurringSessions")
-  checkIn       CheckIn?
+  gym             Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  trainer         Trainer   @relation(fields: [trainerId], references: [id])
+  athlete         Athlete   @relation(fields: [athleteId], references: [id])
+  attendees       SessionAttendee[]
+  parentSession   Session?  @relation("RecurringSessions", fields: [parentSessionId], references: [id])
+  childSessions   Session[] @relation("RecurringSessions")
+  checkIn         CheckIn?
+  bookingRequests BookingRequest[]
 
   @@index([gymId, scheduledAt])
   @@index([trainerId, scheduledAt])
@@ -266,4 +273,113 @@ model ChatMessage {
   createdAt DateTime      @default(now())
 
   @@index([draftId, createdAt])
+}
+
+// --- OAuth 2.1 + MCP (Phase 2) ---
+//
+// Athletes connect their personal Claude.ai (or any MCP-capable client)
+// to the DSC MCP server. Connection happens via OAuth 2.1 with PKCE,
+// using Dynamic Client Registration so the client doesn't need a
+// pre-shared client_id.
+
+model OAuthClient {
+  id                       String   @id @default(cuid())
+  // For DCR'd clients, this is auto-generated. For static admin-created
+  // ones, can be set manually.
+  clientId                 String   @unique
+  // Public clients (Claude.ai mobile, ChatGPT) use PKCE without a
+  // secret. Confidential clients (server-side integrations) have one.
+  clientSecretHash         String?
+  name                     String?  // optional human-readable name from DCR
+  redirectUris             String[] // exact-match list of allowed redirects
+  // dynamic = registered via /oauth/register; static = admin-seeded
+  source                   String   @default("dynamic")
+  createdAt                DateTime @default(now())
+
+  authorizationCodes OAuthAuthorizationCode[]
+  accessTokens       OAuthAccessToken[]
+  refreshTokens      OAuthRefreshToken[]
+
+  @@index([clientId])
+}
+
+model OAuthAuthorizationCode {
+  id                  String      @id @default(cuid())
+  code                String      @unique
+  clientId            String
+  client              OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  athleteId           String
+  athlete             Athlete     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  redirectUri         String
+  // PKCE: client provides code_challenge during /authorize; supplies
+  // the matching code_verifier on /token.
+  codeChallenge       String
+  codeChallengeMethod String      // "S256"
+  scope               String      @default("mcp")
+  expiresAt           DateTime
+  usedAt              DateTime?   // single-use; refuse if set
+  createdAt           DateTime    @default(now())
+
+  @@index([code])
+}
+
+model OAuthAccessToken {
+  id          String      @id @default(cuid())
+  token       String      @unique
+  clientId    String
+  client      OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  athleteId   String
+  athlete     Athlete     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  scope       String      @default("mcp")
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([token])
+  @@index([athleteId])
+}
+
+model OAuthRefreshToken {
+  id          String      @id @default(cuid())
+  token       String      @unique
+  clientId    String
+  client      OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  athleteId   String
+  athlete     Athlete     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([token])
+}
+
+// Athlete-initiated booking requests, e.g. via the MCP server.
+// Distinct from chat-side ProposedBookings (which are part of a
+// DraftSchedule). These need owner action before becoming Sessions.
+model BookingRequest {
+  id            String   @id @default(cuid())
+  gymId         String
+  athleteId     String
+  trainerId     String
+  scheduledAt   DateTime
+  duration      Int      @default(60)
+  notes         String?
+  source        String   @default("mcp") // mcp, web, etc.
+  status        String   @default("pending") // pending, approved, declined, cancelled
+  declineReason String?
+  resolvedAt    DateTime?
+  resolvedBy    String?  // userId of the staff member who acted
+  sessionId     String?  // populated when approved
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  gym     Gym     @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  trainer Trainer @relation(fields: [trainerId], references: [id])
+  session Session? @relation(fields: [sessionId], references: [id])
+
+  @@index([gymId, status])
+  @@index([athleteId])
+  @@index([trainerId])
 }

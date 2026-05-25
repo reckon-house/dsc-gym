@@ -1,12 +1,23 @@
 'use client'
 
 import { Suspense, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 
+// Only redirect to an internal app path. Prevents `?returnTo=https://evil`.
+function safeReturnTo(raw: string | null): string {
+  if (!raw) return '/athlete/dashboard'
+  // Must start with '/' and NOT '//' (which would be protocol-relative).
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/athlete/dashboard'
+  return raw
+}
+
 function LoginInner() {
   const router = useRouter()
+  const params = useSearchParams()
+  const returnTo = safeReturnTo(params.get('returnTo'))
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,7 +35,7 @@ function LoginInner() {
       })
       const data = await res.json()
       if (data.success) {
-        router.replace('/athlete/dashboard')
+        router.replace(returnTo)
       } else {
         setError({
           message: data.error || 'Login failed',
