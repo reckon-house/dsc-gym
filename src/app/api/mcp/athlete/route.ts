@@ -837,7 +837,12 @@ async function handleRpc(
         const base = publicBaseUrl(null)
         const result = {
           protocolVersion: '2025-03-26',
-          capabilities: { tools: {} },
+          // listChanged: true tells capable clients (per MCP spec) that
+          // our tools list can change at runtime and they should be
+          // willing to re-fetch via tools/list. Most clients still cache
+          // at connect-time today, but advertising this future-proofs us
+          // when implementations catch up.
+          capabilities: { tools: { listChanged: true } },
           serverInfo: {
             name: 'Dallas Sports Collective',
             title: 'Dallas Sports Collective',
