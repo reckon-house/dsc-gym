@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
         specialties: t.specialties,
         certifications: t.certifications,
         education: t.education,
+        photoUrl: t.photoUrl,
       })),
     },
   })

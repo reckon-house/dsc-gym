@@ -409,6 +409,26 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'set_trainer_photo',
+    description:
+      "Set or clear a trainer's headshot photo URL. The photo is shown on the athlete dashboard and returned as an inline image by the trainer_bio MCP tool when athletes ask their AI about a trainer. Match the trainer by their first name (case-insensitive). Pass an empty string or null for `url` to clear an existing photo.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        trainerName: {
+          type: 'string',
+          description: "First name (e.g. 'Scott', 'Justin').",
+        },
+        url: {
+          type: 'string',
+          description:
+            'Public image URL (HTTPS). The server fetches and re-serves; jpegs/pngs under ~1MB recommended. Pass empty string to clear.',
+        },
+      },
+      required: ['trainerName', 'url'],
+    },
+  },
+  {
     name: 'archive_trainer',
     description:
       'Soft-remove a trainer who has left the gym. By default: cancels all their future sessions and unassigns their athletes (sets athlete.trainerId=null). Past sessions stay intact for historical records. The trainer\'s account isn\'t deleted — they can be unarchived later.',
@@ -1136,6 +1156,36 @@ export async function dispatchTool(
         email: user.email,
         tempPassword,
         availabilityWindows: weeklyHours.length,
+      }
+    }
+
+    case 'set_trainer_photo': {
+      const needle = String(input.trainerName ?? '').trim().toLowerCase()
+      if (!needle) return { ok: false, error: 'trainerName required.' }
+      const url = String(input.url ?? '').trim()
+      const trainers = await db.trainer.findMany({
+        where: { gymId, archived: false },
+        include: { user: { select: { name: true } } },
+      })
+      const match = trainers.find((t) =>
+        t.user.name.toLowerCase().split(/\s+/).some((tok) => tok.startsWith(needle))
+      )
+      if (!match) {
+        return { ok: false, error: `No active trainer matched '${input.trainerName}'.` }
+      }
+      // Basic URL sanity check — must be http(s). Empty string clears.
+      if (url && !/^https?:\/\//i.test(url)) {
+        return { ok: false, error: 'url must be http(s) or empty.' }
+      }
+      await db.trainer.update({
+        where: { id: match.id },
+        data: { photoUrl: url || null },
+      })
+      return {
+        ok: true,
+        trainerName: match.user.name,
+        photoUrl: url || null,
+        cleared: !url,
       }
     }
 

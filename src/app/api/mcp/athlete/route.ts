@@ -347,8 +347,29 @@ async function tool_list_trainers_public() {
       title: t.title,
       // First few specialties as a teaser; full list is in trainer_bio.
       specialtiesPreview: t.specialties.slice(0, 4),
+      photoUrl: t.photoUrl,
     })),
   })
+}
+
+// Fetch an image URL and return a {mediaType, base64} pair suitable for
+// an MCP image content block. We cap at ~1MB to avoid blowing up
+// response sizes for stupidly large headshots. Returns null on any
+// failure — the caller just skips the image and returns text alone.
+async function fetchAsBase64(
+  url: string
+): Promise<{ mediaType: string; data: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const mediaType = res.headers.get('content-type')?.split(';')[0]?.trim()
+    if (!mediaType?.startsWith('image/')) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > 1_500_000) return null // ~1.5MB cap
+    return { mediaType, data: buf.toString('base64') }
+  } catch {
+    return null
+  }
 }
 
 async function tool_trainer_bio(args: { name?: string }) {
@@ -367,14 +388,33 @@ async function tool_trainer_bio(args: { name?: string }) {
       `No trainer found matching '${args.name}'. Call list_trainers to see who's on the team.`
     )
   }
-  return structuredContent({
+
+  const structured = {
     name: match.user.name,
     title: match.title,
     bio: match.bio,
     specialties: match.specialties,
     certifications: match.certifications,
     education: match.education,
-  })
+    photoUrl: match.photoUrl,
+  }
+
+  // If a photo URL is set, fetch it server-side and embed as an MCP
+  // image content block. Clients that render images (Claude.ai,
+  // ChatGPT) will display it inline next to the bio text.
+  const content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image'; data: string; mimeType: string }
+  > = [{ type: 'text', text: JSON.stringify(structured, null, 2) }]
+
+  if (match.photoUrl) {
+    const img = await fetchAsBase64(match.photoUrl)
+    if (img) {
+      content.push({ type: 'image', data: img.data, mimeType: img.mediaType })
+    }
+  }
+
+  return { content, structuredContent: structured }
 }
 
 async function tool_my_sessions(athleteId: string, args: { range?: string }) {

@@ -39,6 +39,7 @@ interface TrainerProfile {
   specialties: string[]
   certifications: string[]
   education: string | null
+  photoUrl: string | null
 }
 
 interface ServiceEntry {
@@ -484,9 +485,18 @@ function TrainersSection({ trainers }: { trainers: TrainerProfile[] }) {
                 onClick={() => setOpenId(isOpen ? null : t.id)}
                 className="w-full text-left p-4 flex items-center gap-3 hover:bg-black/[0.06]"
               >
-                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center dsc-headline text-base shrink-0">
-                  {t.name.charAt(0)}
-                </div>
+                {t.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={t.photoUrl}
+                    alt={t.name}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center dsc-headline text-base shrink-0">
+                    {t.name.charAt(0)}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-black font-medium truncate">
                     {t.name.split(' ')[0]}
@@ -503,6 +513,14 @@ function TrainersSection({ trainers }: { trainers: TrainerProfile[] }) {
               </button>
               {isOpen && (
                 <div className="px-4 pb-5 pt-1 text-sm text-black/80 space-y-3">
+                  {t.photoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.photoUrl}
+                      alt={t.name}
+                      className="w-full aspect-[4/3] rounded-2xl object-cover bg-black/5"
+                    />
+                  )}
                   {t.bio && (
                     <p className="leading-relaxed">{t.bio}</p>
                   )}

@@ -75,6 +75,9 @@ model Trainer {
   specialties    String[] // ["speed", "return to sport", "adaptive"]
   certifications String[] // ["CSCS", "NASM CPT", ...]
   education      String?  // Free-form for degrees / formal education
+  photoUrl       String?  // Trainer headshot — public URL, rendered on
+                          // dashboard and returned as base64 image block
+                          // by the trainer_bio MCP tool.
 
   athletes        Athlete[]
   sessions        Session[]
