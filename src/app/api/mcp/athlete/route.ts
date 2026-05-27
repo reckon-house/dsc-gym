@@ -771,12 +771,16 @@ export async function GET(request: NextRequest) {
     protocol: 'mcp/2025-03-26',
     auth: 'OAuth 2.1 bearer token',
     discovery: `${base}/.well-known/oauth-protected-resource`,
+    // Per SEP-973: icons[] with `mimeType` (not `type`), `src`, and
+    // optional `sizes`. `icon` (singular) is non-spec — keeping it as a
+    // convenience field for any caller that already reads it.
     icon: `${base}/logo-mark.png`,
     icons: [
-      { src: `${base}/logo-mark.png`, sizes: '932x932', type: 'image/png' },
-      { src: `${base}/apple-icon.png`, sizes: '180x180', type: 'image/png' },
-      { src: `${base}/icon.png`, sizes: '512x512', type: 'image/png' },
+      { src: `${base}/icon.png`, mimeType: 'image/png', sizes: '512x512' },
+      { src: `${base}/apple-icon.png`, mimeType: 'image/png', sizes: '180x180' },
+      { src: `${base}/logo-mark.png`, mimeType: 'image/png', sizes: '932x932' },
     ],
+    websiteUrl: `${base}/athlete`,
   })
 }
 
@@ -834,20 +838,40 @@ async function handleRpc(
   try {
     switch (req.method) {
       case 'initialize': {
-        // Spec-minimal initialize response — name + version on
-        // serverInfo and an empty tools capability. Earlier we packed
-        // branding fields (icon, icons, title, websiteUrl) in here, but
-        // they're not in the MCP serverInfo schema and may be tripping
-        // up Claude.ai's connector card (which keeps showing 'not
-        // connected' even after a successful OAuth + tools/list dance).
-        // Branding stays available at the GET probe + the
-        // /.well-known/oauth-* metadata where it actually belongs.
+        // Per SEP-973 (Final, post-2025-06-18), Implementation may
+        // include optional `icons[]` and `websiteUrl` for visual ID in
+        // the client's connector list. Earlier we used `type` for the
+        // MIME field — the spec actually calls it `mimeType`. That
+        // typo is almost certainly why Claude.ai's connector card
+        // shows the generic globe instead of our monogram (Framer and
+        // the other CUSTOM-tagged connectors render their own icons,
+        // so the path exists).
+        const base = publicBaseUrl(null)
         const result = {
-          protocolVersion: '2025-03-26',
+          protocolVersion: '2025-06-18',
           capabilities: { tools: {} },
           serverInfo: {
             name: 'Dallas Sports Collective',
+            title: 'Dallas Sports Collective',
             version: '0.1.0',
+            icons: [
+              {
+                src: `${base}/icon.png`,
+                mimeType: 'image/png',
+                sizes: '512x512',
+              },
+              {
+                src: `${base}/apple-icon.png`,
+                mimeType: 'image/png',
+                sizes: '180x180',
+              },
+              {
+                src: `${base}/logo-mark.png`,
+                mimeType: 'image/png',
+                sizes: '932x932',
+              },
+            ],
+            websiteUrl: `${base}/athlete`,
           },
         }
         return isNotification ? null : rpcResult(req.id, result)
