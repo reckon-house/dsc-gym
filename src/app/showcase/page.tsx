@@ -187,17 +187,21 @@ export default function ShowcasePage() {
       <section className="px-4 py-12 md:py-16 max-w-3xl mx-auto">
         <div className="dsc-label text-black/40 mb-2">DSC GYM</div>
         <h1 className="dsc-headline text-5xl md:text-7xl text-black leading-[0.9] mb-6">
-          A schedule
+          Your whole
           <br />
-          your athletes
+          schedule.
           <br />
-          run themselves.
+          One conversation.
         </h1>
-        <p className="text-lg md:text-xl text-black/70 leading-relaxed mb-3">
-          Athletes manage their training schedule from any AI they already use —
-          Claude.ai, ChatGPT, anything MCP-compatible. The gym owner approves
-          requests from a single screen and the underlying scheduling engine
-          keeps every booking honest.
+        <p className="text-lg md:text-xl text-black/80 leading-relaxed mb-4">
+          Run the entire gym by chatting with an AI scheduling assistant. Book
+          sessions, move them around, set recurring weekly slots, handle a packed
+          week in seconds. <span className="text-black">No forms. No spreadsheets.</span>
+        </p>
+        <p className="text-base md:text-lg text-black/70 leading-relaxed mb-3">
+          As a bonus, athletes can connect their own Claude.ai or ChatGPT to
+          check their schedule and request sessions on their own — the owner
+          still approves every booking.
         </p>
         <p className="text-sm text-black/50">
           Mobile screenshots from the live production build at{' '}
