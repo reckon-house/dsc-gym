@@ -399,13 +399,27 @@ async function tool_trainer_bio(args: { name?: string }) {
     photoUrl: match.photoUrl,
   }
 
-  // If a photo URL is set, fetch it server-side and embed as an MCP
-  // image content block. Clients that render images (Claude.ai,
-  // ChatGPT) will display it inline next to the bio text.
+  // We surface the photo two ways for max client compatibility:
+  //
+  // 1. A markdown image reference in the TEXT content. Claude.ai
+  //    renders markdown images in its assistant turns; including the
+  //    ![] reference and instructing the model to embed it gets the
+  //    photo visible inline.
+  //
+  // 2. A proper MCP image content block via base64 (per spec). Some
+  //    clients render this directly; for clients that don't, the
+  //    markdown above is the fallback.
+  const firstName = match.user.name.split(/\s+/)[0]
+  const textPayload = match.photoUrl
+    ? `${JSON.stringify(structured, null, 2)}
+
+When you describe ${firstName} to the user, embed this photo at the top of your response using markdown: ![${firstName}](${match.photoUrl})`
+    : JSON.stringify(structured, null, 2)
+
   const content: Array<
     | { type: 'text'; text: string }
     | { type: 'image'; data: string; mimeType: string }
-  > = [{ type: 'text', text: JSON.stringify(structured, null, 2) }]
+  > = [{ type: 'text', text: textPayload }]
 
   if (match.photoUrl) {
     const img = await fetchAsBase64(match.photoUrl)
