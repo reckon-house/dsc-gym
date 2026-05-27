@@ -759,28 +759,17 @@ async function callTool(
 
 // ---------------- HTTP ----------------
 
-// GET returns a tiny "this is an MCP endpoint" hint. Some clients probe
-// with GET first.
-export async function GET(request: NextRequest) {
-  const base = publicBaseUrl(request.nextUrl.origin)
-  return NextResponse.json({
-    name: 'Dallas Sports Collective',
-    title: 'Dallas Sports Collective',
-    description:
-      'See your DSC schedule, check your trainer\'s availability, and request sessions.',
-    protocol: 'mcp/2025-03-26',
-    auth: 'OAuth 2.1 bearer token',
-    discovery: `${base}/.well-known/oauth-protected-resource`,
-    // Per SEP-973: icons[] with `mimeType` (not `type`), `src`, and
-    // optional `sizes`. `icon` (singular) is non-spec — keeping it as a
-    // convenience field for any caller that already reads it.
-    icon: `${base}/logo-mark.png`,
-    icons: [
-      { src: `${base}/icon.png`, mimeType: 'image/png', sizes: '512x512' },
-      { src: `${base}/apple-icon.png`, mimeType: 'image/png', sizes: '180x180' },
-      { src: `${base}/logo-mark.png`, mimeType: 'image/png', sizes: '932x932' },
-    ],
-    websiteUrl: `${base}/athlete`,
+// MCP Streamable HTTP transport: GET is reserved for opening an SSE
+// stream (server-initiated notifications). We don't emit any. Per the
+// spec, when SSE isn't supported the server SHOULD return 405 — that's
+// the unambiguous signal to clients that POST is the only valid method
+// here. Returning 200 with our own JSON probe (as we did before) was
+// non-spec and almost certainly why Claude.ai's connector card was
+// showing 'disconnected' even while POST tool calls succeeded.
+export async function GET() {
+  return new NextResponse(null, {
+    status: 405,
+    headers: { Allow: 'POST' },
   })
 }
 
