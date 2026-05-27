@@ -72,6 +72,48 @@ const ATHLETE: Shot[] = [
   },
 ]
 
+// Screenshots from a live Claude.ai chat where the athlete uses the
+// DSC connector to check their schedule, look up a trainer, find an
+// open slot, and book a session — followed by the admin-side view of
+// the request landing in the owner's queue.
+const AI_IN_ACTION: Shot[] = [
+  {
+    src: '/showcase/19-mcp-chat-1-schedule.png',
+    alt: 'Claude.ai showing the athlete their schedule',
+    title: '"What\'s on my schedule?"',
+    caption:
+      'The athlete asks their everyday AI a casual question. Claude calls the my_sessions tool against DSC, gets back the athlete\'s actual upcoming training, and answers in plain English with the time in Central. The "Loaded tools, used DSC integration" pill is Claude\'s native indicator that it called a connector.',
+  },
+  {
+    src: '/showcase/20-mcp-chat-2-trainer-bio.webp',
+    alt: 'Claude.ai returning a trainer bio',
+    title: '"Tell me about a trainer."',
+    caption:
+      'Claude pulls the full trainer profile — bio, specialties, certifications. It also cross-references the athlete\'s upcoming session and proactively offers a related next action ("your upcoming session is with Scott, not Jordan — want Scott\'s bio?"). Real reasoning across multiple tool calls.',
+  },
+  {
+    src: '/showcase/21-mcp-chat-3-suggest-slots.webp',
+    alt: 'Claude.ai listing open training slots',
+    title: '"Find me an open slot."',
+    caption:
+      'The suggest_slots tool returns every available 60-minute opening with the athlete\'s trainer on a chosen morning. Claude formats it in clean groupings and ends with the right next-action prompt: "Just say the time and I\'ll send the booking request to the gym for approval."',
+  },
+  {
+    src: '/showcase/22-mcp-chat-4-request-session.webp',
+    alt: 'Claude.ai confirming a booking request was sent',
+    title: '"Book the slot."',
+    caption:
+      'One short reply books it. Claude fires request_session, the server creates a real BookingRequest with status=pending, and Claude confirms with the exact time + duration + a note that the gym still needs to approve. Notice the contextual touch: "That\'ll put you at two sessions next week alongside the Wednesday 9 AM" — Claude remembered the existing session from earlier in the conversation.',
+  },
+  {
+    src: '/showcase/18-admin-via-ai-request.png',
+    alt: 'Admin home showing the VIA AI booking request',
+    title: 'The owner\'s side — instantly.',
+    caption:
+      'The request from Claude lands in the owner\'s queue within seconds, tagged "VIA AI" so they know it came from an athlete\'s connected assistant. One tap to Approve or Decline. The engine re-validates on approve — even AI-initiated bookings can\'t bypass conflict rules.',
+  },
+]
+
 const ADMIN: Shot[] = [
   {
     src: '/showcase/09-staff-login.png',
@@ -170,8 +212,14 @@ export default function ShowcasePage() {
       />
 
       <Section
+        eyebrow="The AI integration in action"
+        title="Through their own AI."
+        shots={AI_IN_ACTION}
+      />
+
+      <Section
         eyebrow="The owner experience"
-        title="What Jordan sees."
+        title="What the admin sees."
         shots={ADMIN}
       />
 
