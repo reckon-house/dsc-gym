@@ -834,26 +834,20 @@ async function handleRpc(
   try {
     switch (req.method) {
       case 'initialize': {
-        const base = publicBaseUrl(null)
+        // Spec-minimal initialize response — name + version on
+        // serverInfo and an empty tools capability. Earlier we packed
+        // branding fields (icon, icons, title, websiteUrl) in here, but
+        // they're not in the MCP serverInfo schema and may be tripping
+        // up Claude.ai's connector card (which keeps showing 'not
+        // connected' even after a successful OAuth + tools/list dance).
+        // Branding stays available at the GET probe + the
+        // /.well-known/oauth-* metadata where it actually belongs.
         const result = {
           protocolVersion: '2025-03-26',
-          // listChanged: true tells capable clients (per MCP spec) that
-          // our tools list can change at runtime and they should be
-          // willing to re-fetch via tools/list. Most clients still cache
-          // at connect-time today, but advertising this future-proofs us
-          // when implementations catch up.
-          capabilities: { tools: { listChanged: true } },
+          capabilities: { tools: {} },
           serverInfo: {
             name: 'Dallas Sports Collective',
-            title: 'Dallas Sports Collective',
             version: '0.1.0',
-            icon: `${base}/logo-mark.png`,
-            icons: [
-              { src: `${base}/logo-mark.png`, sizes: '932x932', type: 'image/png' },
-              { src: `${base}/apple-icon.png`, sizes: '180x180', type: 'image/png' },
-              { src: `${base}/icon.png`, sizes: '512x512', type: 'image/png' },
-            ],
-            websiteUrl: `${base}/athlete`,
           },
         }
         return isNotification ? null : rpcResult(req.id, result)
