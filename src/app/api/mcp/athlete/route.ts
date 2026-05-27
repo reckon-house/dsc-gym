@@ -759,17 +759,17 @@ async function callTool(
 
 // ---------------- HTTP ----------------
 
-// MCP Streamable HTTP transport: GET is reserved for opening an SSE
-// stream (server-initiated notifications). We don't emit any. Per the
-// spec, when SSE isn't supported the server SHOULD return 405 — that's
-// the unambiguous signal to clients that POST is the only valid method
-// here. Returning 200 with our own JSON probe (as we did before) was
-// non-spec and almost certainly why Claude.ai's connector card was
-// showing 'disconnected' even while POST tool calls succeeded.
-export async function GET() {
-  return new NextResponse(null, {
-    status: 405,
-    headers: { Allow: 'POST' },
+// GET probe — returns the same minimal info hint we shipped originally,
+// which worked cleanly with Claude.ai for weeks before the recent
+// auth-toast debugging. Reverting from 405 since the 405 may have
+// triggered a stricter validation path. The real transport is POST
+// JSON-RPC; GET is just a probe target.
+export async function GET(request: NextRequest) {
+  return NextResponse.json({
+    name: 'Dallas Sports Collective',
+    description: 'DSC athlete MCP server.',
+    protocol: 'mcp/2025-03-26',
+    discovery: `${publicBaseUrl(request.nextUrl.origin)}/.well-known/oauth-protected-resource`,
   })
 }
 
@@ -827,40 +827,20 @@ async function handleRpc(
   try {
     switch (req.method) {
       case 'initialize': {
-        // Per SEP-973 (Final, post-2025-06-18), Implementation may
-        // include optional `icons[]` and `websiteUrl` for visual ID in
-        // the client's connector list. Earlier we used `type` for the
-        // MIME field — the spec actually calls it `mimeType`. That
-        // typo is almost certainly why Claude.ai's connector card
-        // shows the generic globe instead of our monogram (Framer and
-        // the other CUSTOM-tagged connectors render their own icons,
-        // so the path exists).
-        const base = publicBaseUrl(null)
+        // Conservative spec-minimal response. We tried bumping to
+        // 2025-06-18 + SEP-973 icons earlier — even though those are
+        // technically in spec, Claude.ai's connector kept surfacing
+        // 'Authorization failed' toasts after that change. Reverting
+        // to the protocol version and minimal shape we know works
+        // reliably; can re-introduce branding fields later through the
+        // well-known metadata once Claude.ai's connector behavior is
+        // more predictable.
         const result = {
-          protocolVersion: '2025-06-18',
+          protocolVersion: '2025-03-26',
           capabilities: { tools: {} },
           serverInfo: {
             name: 'Dallas Sports Collective',
-            title: 'Dallas Sports Collective',
             version: '0.1.0',
-            icons: [
-              {
-                src: `${base}/icon.png`,
-                mimeType: 'image/png',
-                sizes: '512x512',
-              },
-              {
-                src: `${base}/apple-icon.png`,
-                mimeType: 'image/png',
-                sizes: '180x180',
-              },
-              {
-                src: `${base}/logo-mark.png`,
-                mimeType: 'image/png',
-                sizes: '932x932',
-              },
-            ],
-            websiteUrl: `${base}/athlete`,
           },
         }
         return isNotification ? null : rpcResult(req.id, result)
