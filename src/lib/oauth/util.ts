@@ -39,6 +39,11 @@ export function isAllowedRedirectUri(
   return registered.includes(redirectUri)
 }
 
-export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 // 1h
+// 24h access token. Originally 1h (RFC suggests "short-lived"), but
+// in practice that meant ~24 chances per day for the connector's
+// auto-refresh to hiccup and silently disconnect on the client side.
+// The refresh token rotation still happens; we just don't need a fresh
+// access token every hour.
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24 // 24h
 export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30 // 30d
 export const AUTH_CODE_TTL_SECONDS = 90 // 90s

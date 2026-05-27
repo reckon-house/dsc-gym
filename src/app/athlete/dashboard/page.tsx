@@ -64,6 +64,13 @@ interface GymOverview {
   mcpUrl: string
 }
 
+interface ConnectionStatus {
+  connected: boolean
+  lastUsedAt: string | null
+  firstConnectedAt: string | null
+  clientNames: string[]
+}
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function isSameDay(a: Date, b: Date) {
@@ -81,6 +88,7 @@ export default function AthleteDashboard() {
   const [requests, setRequests] = useState<BookingRequest[]>([])
   const [gymOverview, setGymOverview] = useState<GymOverview | null>(null)
   const [trainers, setTrainers] = useState<TrainerProfile[]>([])
+  const [connection, setConnection] = useState<ConnectionStatus | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -92,10 +100,11 @@ export default function AthleteDashboard() {
         return
       }
       setAthlete(d.athlete)
-      const [sRes, rRes, gRes] = await Promise.all([
+      const [sRes, rRes, gRes, cRes] = await Promise.all([
         fetch('/api/athletes/me/sessions'),
         fetch('/api/athletes/me/requests'),
         fetch('/api/gym/overview'),
+        fetch('/api/athletes/me/connection-status'),
       ])
       const sData = await sRes.json()
       if (sData.success) setSessions(sData.data)
@@ -106,6 +115,8 @@ export default function AthleteDashboard() {
         setGymOverview(gData.data.gym)
         setTrainers(gData.data.trainers)
       }
+      const cData = await cRes.json()
+      if (cData.success) setConnection(cData.data)
       setLoading(false)
     })()
   }, [router])
@@ -267,7 +278,10 @@ export default function AthleteDashboard() {
         )}
 
         {/* Connect to AI — MCP */}
-        <ConnectToAI mcpUrl={gymOverview?.mcpUrl ?? ''} />
+        <ConnectToAI
+          mcpUrl={gymOverview?.mcpUrl ?? ''}
+          status={connection}
+        />
 
         {/* Gym info footer */}
         {gymOverview && <GymInfoFooter overview={gymOverview} />}
@@ -363,7 +377,72 @@ function RequestActivity({ requests }: { requests: BookingRequest[] }) {
   )
 }
 
-function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
+// Format "5 minutes ago" / "yesterday" / "3 days ago" from an ISO time.
+// Kept narrow — only used inline for the connection-status pill.
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (isNaN(then)) return ''
+  const diffSec = Math.round((Date.now() - then) / 1000)
+  if (diffSec < 60) return 'just now'
+  const min = Math.round(diffSec / 60)
+  if (min < 60) return `${min} min ago`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.round(hr / 24)
+  if (day === 1) return 'yesterday'
+  if (day < 7) return `${day} days ago`
+  if (day < 30) return `${Math.round(day / 7)} wk ago`
+  return `${Math.round(day / 30)} mo ago`
+}
+
+function ConnectionStatusPill({ status }: { status: ConnectionStatus }) {
+  if (status.connected) {
+    const via = status.clientNames[0] ?? null
+    const activity = status.lastUsedAt
+      ? `last activity ${relativeTime(status.lastUsedAt)}`
+      : 'ready'
+    return (
+      <div className="rounded-2xl bg-white px-4 py-3 mb-3 flex items-center gap-3">
+        <span
+          className="w-2 h-2 rounded-full bg-green-600 shrink-0"
+          aria-hidden
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-black">
+            <span className="font-medium">Connected</span>
+            {via && (
+              <span className="text-black/50"> · via {via}</span>
+            )}
+          </div>
+          <div className="text-xs text-black/50">{activity}</div>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-2xl bg-white px-4 py-3 mb-3 flex items-center gap-3">
+      <span className="w-2 h-2 rounded-full bg-black/30 shrink-0" aria-hidden />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-black">
+          <span className="font-medium">Not connected</span>
+        </div>
+        <div className="text-xs text-black/50">
+          {status.firstConnectedAt
+            ? `Last connected ${relativeTime(status.firstConnectedAt)}. Re-add the connector below to reconnect.`
+            : 'Follow the steps below to connect your AI.'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ConnectToAI({
+  mcpUrl,
+  status,
+}: {
+  mcpUrl: string
+  status: ConnectionStatus | null
+}) {
   // mcpUrl arrives server-computed via /api/gym/overview, so this is
   // always the publicly-reachable production URL even when the page
   // itself is being served from localhost.
@@ -376,6 +455,10 @@ function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
       /* clipboard might be blocked — fallthrough */
     }
   }
+
+  // Default-open the instructions when not connected so the recovery
+  // path is one click away.
+  const openByDefault = status ? !status.connected : false
 
   return (
     <div className="mt-8 rounded-3xl bg-black/[0.04] p-5">
@@ -390,6 +473,11 @@ function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
         trainer, or request a session. The gym owner still approves any new
         bookings.
       </p>
+
+      {/* Status pill — derived from server-side OAuth token state, not
+          the client's connector UI. Shows the athlete the source of
+          truth so a stale connector card doesn't make them panic. */}
+      {status && <ConnectionStatusPill status={status} />}
 
       <div className="rounded-2xl bg-white p-3 mb-3">
         <div className="dsc-label text-black/40 mb-1">MCP server URL</div>
@@ -407,7 +495,7 @@ function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
       </div>
 
       <div className="space-y-2">
-        <details className="text-sm text-black/70 group">
+        <details className="text-sm text-black/70 group" open={openByDefault}>
           <summary className="cursor-pointer text-black/80 select-none flex items-center gap-2">
             <span className="dsc-label text-black/40 group-open:hidden">+</span>
             <span className="dsc-label text-black/40 hidden group-open:inline">–</span>
@@ -430,7 +518,7 @@ function ConnectToAI({ mcpUrl }: { mcpUrl: string }) {
           </ol>
         </details>
 
-        <details className="text-sm text-black/70 group">
+        <details className="text-sm text-black/70 group" open={openByDefault}>
           <summary className="cursor-pointer text-black/80 select-none flex items-center gap-2">
             <span className="dsc-label text-black/40 group-open:hidden">+</span>
             <span className="dsc-label text-black/40 hidden group-open:inline">–</span>
