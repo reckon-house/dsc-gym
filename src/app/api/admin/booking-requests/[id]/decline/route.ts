@@ -79,10 +79,18 @@ async function sendDeclineEmail(request: NextRequest, requestId: string) {
     logoUrl: process.env.EMAIL_LOGO_URL || `${base}/logo-mark.png`,
     heroImageUrl: process.env.EMAIL_HERO_URL,
   })
-  await sendEmail({
+  const emailResult = await sendEmail({
     to: row.athlete.email,
     subject: tpl.subject,
     text: tpl.text,
     html: tpl.html,
   })
+  if (!emailResult.delivered) {
+    // The decline itself succeeded and is committed; only the notification
+    // failed. Surface it so a broken mail config can't hide behind a 200.
+    console.error(
+      `[decline] session declined but notification email FAILED to send`,
+      { to: row.athlete.email }
+    )
+  }
 }

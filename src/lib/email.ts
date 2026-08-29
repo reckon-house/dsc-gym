@@ -49,14 +49,30 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boole
       })
       if (!res.ok) {
         const errBody = await res.text()
-        console.error('Resend send failed:', errBody)
+        console.error(
+          `[email] Resend send FAILED (${res.status}) to=${args.to} subject="${args.subject}":`,
+          errBody
+        )
         return { delivered: false }
       }
       return { delivered: true }
     } catch (err) {
-      console.error('Resend exception:', err)
+      console.error(
+        `[email] Resend threw for to=${args.to} subject="${args.subject}":`,
+        err
+      )
       return { delivered: false }
     }
+  }
+
+  // No key. In production that is a misconfiguration that would otherwise
+  // fail silently — every caller would think mail went out. Shout about it.
+  if (process.env.NODE_ENV === 'production') {
+    console.error(
+      '[email] RESEND_API_KEY is not set in production — NO EMAIL WAS SENT.',
+      { to: args.to, subject: args.subject }
+    )
+    return { delivered: false }
   }
 
   // Dev fallback: log so the verification URL is visible in the server output.

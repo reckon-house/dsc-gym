@@ -129,7 +129,7 @@ async function sendApprovalEmail(request: NextRequest, requestId: string) {
     location: 'Dallas Sports Collective',
     description: `Training session with ${row.trainer.user.name}.`,
   })
-  await sendEmail({
+  const emailResult = await sendEmail({
     to: row.athlete.email,
     subject: tpl.subject,
     text: tpl.text,
@@ -138,4 +138,12 @@ async function sendApprovalEmail(request: NextRequest, requestId: string) {
       { filename: 'dsc-session.ics', content: ics, contentType: 'text/calendar' },
     ],
   })
+  if (!emailResult.delivered) {
+    // The approval itself succeeded and is committed; only the notification
+    // failed. Surface it so a broken mail config can't hide behind a 200.
+    console.error(
+      `[approval] session approved but notification email FAILED to send`,
+      { to: row.athlete.email }
+    )
+  }
 }
