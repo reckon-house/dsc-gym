@@ -101,7 +101,7 @@ export function buildVerificationEmail(args: {
 
   const text = `Hi ${args.firstName},
 
-Welcome to Dallas Sports Collective.
+Welcome to Dallas Sport Collective.
 
 Confirm your email to activate your account:
 ${args.url}
@@ -112,7 +112,7 @@ This link expires in 24 hours. If you didn't sign up, ignore this email.
 
   const html = renderHtmlEmail({
     preview: 'Tap the button to activate your DSC account.',
-    headerLabel: 'Dallas Sports Collective',
+    headerLabel: 'Dallas Sport Collective',
     logoUrl: args.logoUrl,
     heroImageUrl: args.heroImageUrl,
     headline: 'Welcome to DSC',
@@ -201,7 +201,7 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
                   <tr>
                     <td style="line-height:0;font-size:0;">
                       <img src="${escapeAttr(args.heroImageUrl)}"
-                           alt="Dallas Sports Collective"
+                           alt="Dallas Sport Collective"
                            width="600"
                            style="display:block;width:100%;max-width:600px;height:auto;border-top-left-radius:24px;border-top-right-radius:24px;" />
                     </td>
@@ -255,7 +255,7 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
                   ${escapeHtml(args.footnote)}
                 </p>
                 <p style="margin:8px 0 0 0;font-family:'SFMono-Regular','Menlo','Monaco',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:${muted};">
-                  Dallas Sports Collective
+                  Dallas Sport Collective
                 </p>
               </td>
             </tr>
@@ -298,7 +298,7 @@ ${args.dashboardUrl}
 
   const html = renderHtmlEmail({
     preview: `Confirmed: ${args.whenHuman} with ${args.trainerName.split(' ')[0]}.`,
-    headerLabel: 'Dallas Sports Collective',
+    headerLabel: 'Dallas Sport Collective',
     logoUrl: args.logoUrl,
     heroImageUrl: args.heroImageUrl,
     headline: 'You’re booked.',
@@ -337,7 +337,7 @@ ${args.dashboardUrl}
 
   const html = renderHtmlEmail({
     preview: `Couldn't fit ${args.whenHuman} — try another time.`,
-    headerLabel: 'Dallas Sports Collective',
+    headerLabel: 'Dallas Sport Collective',
     logoUrl: args.logoUrl,
     heroImageUrl: args.heroImageUrl,
     headline: 'Let’s find\nanother time.',
@@ -381,7 +381,7 @@ export function buildSessionIcs(args: {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Dallas Sports Collective//DSC Gym//EN',
+    'PRODID:-//Dallas Sport Collective//DSC Gym//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

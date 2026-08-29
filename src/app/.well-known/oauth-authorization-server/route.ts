@@ -23,6 +23,6 @@ export async function GET(request: NextRequest) {
     // Branding hints (non-standard but read by MCP connector UIs).
     op_policy_uri: `${base}/athlete`,
     logo_uri: `${base}/logo-mark.png`,
-    op_name: 'Dallas Sports Collective',
+    op_name: 'Dallas Sport Collective',
   })
 }

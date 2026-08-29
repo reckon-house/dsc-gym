@@ -199,7 +199,7 @@ export default function AdminHome() {
         <div className="flex items-center gap-3">
           <Image src="/logo-mark.png" alt="DSC" width={44} height={44} priority />
           <span className="dsc-label text-black/40 hidden sm:inline">
-            Dallas Sports Collective
+            Dallas Sport Collective
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -285,7 +285,7 @@ export default function AdminHome() {
         <div className="max-w-3xl mx-auto rounded-3xl overflow-hidden aspect-[16/9] md:aspect-[21/9] bg-black/5">
           <img
             src="/checkin-bg.jpg"
-            alt="Dallas Sports Collective"
+            alt="Dallas Sport Collective"
             className="w-full h-full object-cover"
           />
         </div>

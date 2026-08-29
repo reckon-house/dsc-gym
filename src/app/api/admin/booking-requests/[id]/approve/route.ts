@@ -126,7 +126,7 @@ async function sendApprovalEmail(request: NextRequest, requestId: string) {
     endsAt,
     trainerName: row.trainer.user.name,
     athleteName: `${row.athlete.firstName} ${row.athlete.lastName}`,
-    location: 'Dallas Sports Collective',
+    location: 'Dallas Sport Collective',
     description: `Training session with ${row.trainer.user.name}.`,
   })
   const emailResult = await sendEmail({

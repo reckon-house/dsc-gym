@@ -20,7 +20,7 @@ async function main() {
   // make this idempotent for re-runs after a manual wipe).
   await prisma.gym.upsert({
     where: { id: GYM_ID },
-    create: { id: GYM_ID, name: 'Dallas Sports Collective', timezone: 'America/Chicago' },
+    create: { id: GYM_ID, name: 'Dallas Sport Collective', timezone: 'America/Chicago' },
     update: {},
   })
   await prisma.gymConfig.upsert({

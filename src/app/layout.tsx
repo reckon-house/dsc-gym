@@ -17,16 +17,16 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_BASE_URL ?? "https://dsc-gym.vercel.app"
   ),
   title: {
-    default: "Dallas Sports Collective",
+    default: "Dallas Sport Collective",
     template: "%s · DSC",
   },
   description:
-    "Dallas Sports Collective — personal training scheduling.",
-  applicationName: "Dallas Sports Collective",
+    "Dallas Sport Collective — personal training scheduling.",
+  applicationName: "Dallas Sport Collective",
   openGraph: {
-    title: "Dallas Sports Collective",
+    title: "Dallas Sport Collective",
     description: "Personal training scheduling.",
-    siteName: "Dallas Sports Collective",
+    siteName: "Dallas Sport Collective",
     images: ["/logo-mark.png"],
   },
 };

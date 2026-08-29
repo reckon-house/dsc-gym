@@ -38,7 +38,7 @@ export default function AthleteLanding() {
             <div className="w-full max-w-md mx-auto space-y-6">
               <div className="dsc-enter">
                 <div className="dsc-label text-white/70 mb-2">
-                  Dallas Sports Collective
+                  Dallas Sport Collective
                 </div>
                 <h1 className="dsc-headline text-4xl md:text-6xl text-white leading-[0.85] mb-2">
                   Unlock your

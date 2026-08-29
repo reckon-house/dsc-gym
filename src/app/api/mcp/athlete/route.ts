@@ -780,7 +780,7 @@ async function callTool(
 // JSON-RPC; GET is just a probe target.
 export async function GET(request: NextRequest) {
   return NextResponse.json({
-    name: 'Dallas Sports Collective',
+    name: 'Dallas Sport Collective',
     description: 'DSC athlete MCP server.',
     protocol: 'mcp/2025-03-26',
     discovery: `${publicBaseUrl(request.nextUrl.origin)}/.well-known/oauth-protected-resource`,
@@ -853,7 +853,7 @@ async function handleRpc(
           protocolVersion: '2025-03-26',
           capabilities: { tools: {} },
           serverInfo: {
-            name: 'Dallas Sports Collective',
+            name: 'Dallas Sport Collective',
             version: '0.1.0',
           },
         }
