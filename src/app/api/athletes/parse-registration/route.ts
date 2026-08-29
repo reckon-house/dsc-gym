@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey })
 
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5',
       max_tokens: 512,
       system: `You are a registration form parser for a gym. Extract user information from free-form text input.
 
