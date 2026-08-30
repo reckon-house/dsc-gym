@@ -56,6 +56,15 @@ const CARDS: {
   { href: '/admin/athletes', label: 'Athletes', desc: 'Members & assignments' },
 ]
 
+// Secondary destinations. Kept out of the square-card grid so the four
+// everyday jobs stay the thing you see first — and so an odd count doesn't
+// leave a hole in a two-column layout.
+const LINKS: { href: string; label: string; desc: string }[] = [
+  { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
+  { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
+  { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },
+]
+
 export default function AdminHome() {
   const router = useRouter()
   const [user, setUser] = useState<{ name: string } | null>(null)
@@ -63,6 +72,9 @@ export default function AdminHome() {
   const [unassigned, setUnassigned] = useState<UnassignedAthlete[]>([])
   const [trainers, setTrainers] = useState<TrainerOption[]>([])
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([])
+  const [extraVisits, setExtraVisits] = useState<
+    { athleteId: string; name: string; extraVisits: number }[]
+  >([])
   const [assigning, setAssigning] = useState<string | null>(null)
   const [resolvingReq, setResolvingReq] = useState<string | null>(null)
   const [sheet, setSheet] = useState<
@@ -72,16 +84,18 @@ export default function AdminHome() {
   >(null)
 
   const loadAuxiliary = useCallback(async () => {
-    const [t, w, u, br] = await Promise.all([
+    const [t, w, u, br, ev] = await Promise.all([
       fetch('/api/trainers').then((r) => r.json()),
       fetch('/api/walkins').then((r) => r.json()),
       fetch('/api/athletes?unassigned=true').then((r) => r.json()),
       fetch('/api/admin/booking-requests').then((r) => r.json()),
+      fetch('/api/admin/attendance/extra?days=30').then((r) => r.json()),
     ])
     if (t.success) setTrainers(t.data)
     if (w.success) setWalkIns(w.data)
     if (u.success) setUnassigned(u.data)
     if (br.success) setBookingRequests(br.data)
+    if (ev.success) setExtraVisits(ev.data.rows)
   }, [])
 
   function summarizeRequest(r: BookingRequest): RequestSummary {
@@ -216,7 +230,10 @@ export default function AdminHome() {
       </header>
 
       {/* Alerts row */}
-      {(walkIns.length > 0 || unassigned.length > 0 || bookingRequests.length > 0) && (
+      {(walkIns.length > 0 ||
+        unassigned.length > 0 ||
+        bookingRequests.length > 0 ||
+        extraVisits.length > 0) && (
         <div className="px-4 space-y-2 pb-2">
           {bookingRequests.length > 0 && (
             <BookingRequestsBox
@@ -225,6 +242,35 @@ export default function AdminHome() {
               onDecline={declineRequest}
               resolving={resolvingReq}
             />
+          )}
+          {extraVisits.length > 0 && (
+            <div className="px-4 py-3 rounded-2xl bg-black/[0.05] border border-black/10 max-w-3xl mx-auto">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-black" aria-hidden />
+                <span className="dsc-label text-black">
+                  Extra visits · {extraVisits.length}
+                </span>
+              </div>
+              <p className="text-xs text-black/60 mb-2">
+                Checked in without a scheduled session in the last 30 days.
+              </p>
+              <div className="space-y-2">
+                {extraVisits.slice(0, 5).map((r) => (
+                  <Link
+                    key={r.athleteId}
+                    href={`/admin/athletes/${r.athleteId}`}
+                    className="bg-white rounded-2xl p-3 flex items-center gap-3 hover:bg-black/[0.02]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-black truncate font-medium">{r.name}</div>
+                    </div>
+                    <span className="dsc-label text-black/60 shrink-0">
+                      {r.extraVisits}&times;
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
           )}
           {walkIns.length > 0 && (
             <AlertBox
@@ -275,6 +321,24 @@ export default function AdminHome() {
               <div className="dsc-headline text-2xl sm:text-3xl md:text-5xl text-black whitespace-pre-line leading-[0.9] break-words">
                 {c.label}
               </div>
+            </Link>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-3xl mx-auto mt-3">
+          {LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="group flex items-center justify-between gap-3 bg-black/[0.04] hover:bg-black/[0.07] rounded-2xl px-4 py-3 transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="dsc-headline text-base text-black truncate">{l.label}</div>
+                <div className="dsc-label text-black/40 group-hover:text-black/60 truncate">
+                  {l.desc}
+                </div>
+              </div>
+              <span className="text-black/30 group-hover:text-black/60 shrink-0">→</span>
             </Link>
           ))}
         </div>

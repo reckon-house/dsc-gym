@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : 'unknown'
 
       // Check if athlete exists
-      const athlete = await db.athlete.findUnique({
+      const athlete = await db.athlete.findFirst({
         where: { email: email.toLowerCase() },
       })
 

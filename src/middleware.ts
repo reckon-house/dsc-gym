@@ -30,6 +30,11 @@ const PUBLIC_PATHS = [
   '/oauth/token',
   '/oauth/revoke',
   '/api/mcp',
+  // Vercel's cron caller and mail-client unsubscribe clicks arrive with no
+  // session cookie. Both routes authenticate themselves — the cron by
+  // CRON_SECRET bearer, unsubscribe by a signed HMAC token.
+  '/api/cron',
+  '/api/unsubscribe',
 ]
 
 // Routes only accessible by specific roles

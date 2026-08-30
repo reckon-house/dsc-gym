@@ -35,6 +35,16 @@ export async function GET(request: NextRequest) {
       where.trainerId = trainerId
     }
 
+    // Archived athletes are hidden unless an admin explicitly asks for them.
+    // This list previously returned archived rows in every branch except
+    // `unassigned`, so people who had been archived still showed up on the
+    // roster and in the day-view athlete pickers.
+    if (where.archived === undefined) {
+      const includeArchived =
+        searchParams.get('includeArchived') === 'true' && session.role === 'ADMIN'
+      if (!includeArchived) where.archived = false
+    }
+
     const athletes = await db.athlete.findMany({
       where,
       include: {

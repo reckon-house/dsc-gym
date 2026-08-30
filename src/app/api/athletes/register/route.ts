@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, verifyPassword } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import {
   buildVerificationEmail,
@@ -16,7 +16,7 @@ import { publicBaseUrl } from '@/lib/oauth/util'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, password, legalName } = body
+    const { firstName, lastName, email, phone, password, legalName, birthdate } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json(
@@ -54,14 +54,55 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Birthdate is optional. Stored as a DATE at UTC midnight so it can't
+    // drift a day depending on where the server runs. Used for age-banded
+    // announcements; nulls are treated as "unknown", never guessed.
+    let parsedBirthdate: Date | null = null
+    if (birthdate) {
+      const raw = String(birthdate).trim()
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return NextResponse.json(
+          { success: false, error: 'Birthdate must be YYYY-MM-DD.' },
+          { status: 400 }
+        )
+      }
+      const d = new Date(`${raw}T00:00:00.000Z`)
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json(
+          { success: false, error: 'Birthdate is not a real date.' },
+          { status: 400 }
+        )
+      }
+      parsedBirthdate = d
+    }
+
     const normalizedEmail = email.toLowerCase().trim()
 
-    const existing = await db.athlete.findUnique({ where: { email: normalizedEmail } })
+    // Several kids legitimately share one parent mailbox, so a match here is
+    // usually a parent adding a sibling rather than a duplicate signup.
+    //
+    // The gate is the family password: to attach a new athlete to an existing
+    // mailbox you must already know it. Otherwise anyone who guessed a parent's
+    // email could add themselves into that family and see the kids' schedules.
+    const existing = await db.athlete.findFirst({
+      where: { email: normalizedEmail },
+      orderBy: { createdAt: 'asc' },
+    })
+    let joiningFamily = false
     if (existing) {
-      return NextResponse.json(
-        { success: false, error: 'An account with this email already exists' },
-        { status: 400 }
-      )
+      const knowsFamilyPassword =
+        existing.passwordHash && (await verifyPassword(password, existing.passwordHash))
+      if (!knowsFamilyPassword) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'That email is already registered. To add another athlete to it, use the same password you signed up with.',
+          },
+          { status: 400 }
+        )
+      }
+      joiningFamily = true
     }
 
     const passwordHash = await hashPassword(password)
@@ -76,11 +117,12 @@ export async function POST(request: NextRequest) {
         lastName: lastName.trim(),
         email: normalizedEmail,
         phone: normalizedPhone,
+        birthdate: parsedBirthdate,
         passwordHash,
         trainerId: null,
-        emailVerified: false,
-        emailVerificationToken: token,
-        emailVerificationExpiresAt: expiresAt,
+        emailVerified: joiningFamily ? existing!.emailVerified : false,
+        emailVerificationToken: joiningFamily ? null : token,
+        emailVerificationExpiresAt: joiningFamily ? null : expiresAt,
         // The "I have read and agree" checkbox on the registration form is
         // the formal sign event — record it here. (Submission is blocked
         // server-side without legalName, and client-side without the

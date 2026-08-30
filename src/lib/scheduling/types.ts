@@ -32,16 +32,23 @@ export interface BookingInput {
 // Group bookings allow multiple athletes in one session with one trainer.
 // One-on-one bookings are just groups of size 1.
 export interface GroupBookingInput {
+  /** Lead coach. Stored as Session.trainerId for backwards compatibility. */
   trainerId: string
   athleteIds: string[] // length 1 for solo, >1 for group
   scheduledAt: Date
   duration: number
+  /** All coaches incl. the lead. Defaults to [trainerId] when omitted. */
+  coachIds?: string[]
+  /** Set when this booking came from a Group's recurring schedule. */
+  groupId?: string | null
+  notes?: string | null
 }
 
 export type ConflictKind =
   | 'OUTSIDE_AVAILABILITY'
   | 'TRAINER_DOUBLE_BOOKED'
   | 'FLOOR_CAP_EXCEEDED'
+  | 'MEETING_CONFLICT'
   | 'BUFFER_VIOLATION'
   | 'SAME_TRAINER_SAME_DAY'
   | 'DISALLOWED_DURATION'

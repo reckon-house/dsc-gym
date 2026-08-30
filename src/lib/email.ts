@@ -18,6 +18,8 @@ export interface SendEmailArgs {
   text: string
   html?: string
   attachments?: EmailAttachment[]
+  /** Passed straight to Resend. Used for List-Unsubscribe on blasts. */
+  headers?: Record<string, string>
 }
 
 export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boolean }> {
@@ -31,6 +33,9 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boole
         subject: args.subject,
         text: args.text,
         html: args.html,
+      }
+      if (args.headers && Object.keys(args.headers).length > 0) {
+        body.headers = args.headers
       }
       if (args.attachments && args.attachments.length > 0) {
         body.attachments = args.attachments.map((a) => ({
@@ -409,4 +414,218 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, '&quot;')
+}
+
+// ---------------------------------------------------------------------------
+// Booking + reminder notifications (G1/G2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sent when someone other than the athlete puts a session on the calendar —
+ * the admin panel, the AI scheduler committing a draft, or a group booking.
+ * This is the athlete's first notice of the session, so the caller attaches
+ * the .ics alongside it.
+ *
+ * Trainers get the same email with the roles swapped (`role: 'trainer'`).
+ */
+export function buildSessionBookedEmail(args: {
+  role: 'athlete' | 'trainer'
+  firstName: string
+  /** The other party: trainer name for athletes, athlete name(s) for trainers. */
+  otherPartyName: string
+  whenHuman: string
+  whenDayDate: string
+  whenTimeRange: string
+  durationMinutes: number
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const isAthlete = args.role === 'athlete'
+  const withWhom = isAthlete
+    ? `with ${args.otherPartyName}`
+    : `with ${args.otherPartyName}`
+  const subject = isAthlete
+    ? `You're booked: ${args.whenHuman}`
+    : `New session: ${args.whenHuman} — ${args.otherPartyName}`
+
+  const text = `Hi ${args.firstName},
+
+${isAthlete ? 'A session has been added to your schedule.' : 'A session has been added to your calendar.'}
+
+${args.whenDayDate}
+${args.whenTimeRange} (${args.durationMinutes} min) ${withWhom}
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `${args.whenDayDate}, ${args.whenTimeRange}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: isAthlete ? "You're booked" : 'New session',
+    intro: `Hi ${args.firstName} — ${args.whenDayDate} at ${args.whenTimeRange} (${args.durationMinutes} min) ${withWhom}.`,
+    buttonLabel: isAthlete ? 'View my schedule' : 'View my calendar',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: isAthlete
+      ? 'Need to change it? Reply to this email or talk to your trainer.'
+      : 'Added from the DSC scheduler.',
+  })
+
+  return { subject, text, html }
+}
+
+/**
+ * The 24-hour reminder, sent to athlete and trainer alike.
+ *
+ * Deliberately carries no .ics: the invite went out when the session was
+ * booked, and re-sending a METHOD:PUBLISH invite makes some clients create a
+ * second calendar entry.
+ */
+export function buildSessionReminderEmail(args: {
+  role: 'athlete' | 'trainer'
+  firstName: string
+  otherPartyName: string
+  whenDayDate: string
+  whenTimeRange: string
+  durationMinutes: number
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const isAthlete = args.role === 'athlete'
+  const startTime = args.whenTimeRange.split(' – ')[0] ?? args.whenTimeRange
+  const subject = `Tomorrow at ${startTime}${isAthlete ? '' : ` — ${args.otherPartyName}`}`
+
+  const text = `Hi ${args.firstName},
+
+Reminder — you've got a session tomorrow.
+
+${args.whenDayDate}
+${args.whenTimeRange} (${args.durationMinutes} min) with ${args.otherPartyName}
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `Tomorrow, ${args.whenTimeRange}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'See you tomorrow',
+    intro: `Hi ${args.firstName} — ${args.whenDayDate} at ${args.whenTimeRange} (${args.durationMinutes} min) with ${args.otherPartyName}.`,
+    buttonLabel: isAthlete ? 'View my schedule' : 'View my calendar',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reply to this email if you need to move it.',
+  })
+
+  return { subject, text, html }
+}
+
+/**
+ * One digest when a standing slot materializes, instead of N booking emails
+ * for N weeks of sessions.
+ */
+export function buildStandingSlotDigestEmail(args: {
+  firstName: string
+  trainerName: string
+  slotLabel: string // "Tuesdays at 4:00 PM"
+  count: number
+  throughDate: string // "Oct 24"
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `${args.count} session${args.count === 1 ? '' : 's'} added — ${args.slotLabel}`
+
+  const text = `Hi ${args.firstName},
+
+Your standing slot is booked: ${args.slotLabel} with ${args.trainerName}.
+
+${args.count} session${args.count === 1 ? '' : 's'} added, through ${args.throughDate}.
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `${args.count} sessions added through ${args.throughDate}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'Your standing slot is set',
+    intro: `Hi ${args.firstName} — ${args.slotLabel} with ${args.trainerName}. That's ${args.count} session${args.count === 1 ? '' : 's'} on your schedule through ${args.throughDate}.`,
+    buttonLabel: 'View my schedule',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reply to this email if any of these need moving.',
+  })
+
+  return { subject, text, html }
+}
+
+/**
+ * Announcement layout. Plain paragraphs (split on blank lines) rather than one
+ * CTA, plus the unsubscribe footer that promotional mail legally needs.
+ */
+export function buildBlastEmail(args: {
+  subject: string
+  bodyText: string
+  unsubscribeUrl: string
+  /** Null for a shared mailbox — greeting stays generic rather than picking a kid. */
+  greetingName: string | null
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const greeting = args.greetingName ? `Hi ${args.greetingName},` : 'Hi,'
+
+  const text = `${greeting}
+
+${args.bodyText}
+
+— Dallas Sport Collective
+
+Unsubscribe from announcements: ${args.unsubscribeUrl}`
+
+  const paragraphs = args.bodyText
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 16px;font-family:Avenir Next,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#141414;">${escapeHtml(
+          p
+        ).replace(/\n/g, '<br>')}</p>`
+    )
+    .join('')
+
+  const html = `<!doctype html>
+<html><body style="margin:0;padding:0;background:#f4f4f4;">
+<div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(args.subject)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+${
+  args.logoUrl
+    ? `<tr><td align="center" style="padding:28px 32px 8px;"><img src="${escapeAttr(args.logoUrl)}" width="48" height="48" alt="DSC" style="display:block;border:0;"></td></tr>`
+    : ''
+}
+<tr><td style="padding:8px 32px 4px;font-family:'SF Mono',Menlo,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8e8e8e;">Dallas Sport Collective</td></tr>
+<tr><td style="padding:8px 32px 0;font-family:Avenir Next,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#141414;">${escapeHtml(greeting)}</td></tr>
+<tr><td style="padding:16px 32px 8px;">${paragraphs}</td></tr>
+<tr><td style="padding:8px 32px 32px;font-family:'SF Mono',Menlo,monospace;font-size:11px;color:#8e8e8e;">
+<a href="${escapeAttr(args.unsubscribeUrl)}" style="color:#8e8e8e;">Unsubscribe from announcements</a>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`
+
+  return { subject: args.subject, text, html }
 }

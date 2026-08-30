@@ -17,6 +17,11 @@ interface Athlete {
   lastName: string
   email: string
   phone: string | null
+  birthdate: string | null
+  address: string | null
+  archived: boolean
+  emailOptOut: boolean
+  smsOptIn: boolean
   emailVerified: boolean
   waiverSignedAt: string | null
   trainerId: string | null
@@ -67,6 +72,8 @@ export default function AthleteDetail() {
   const [loading, setLoading] = useState(true)
   const [showAddSlot, setShowAddSlot] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [showEdit, setShowEdit] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
 
   const load = useCallback(async () => {
     const [a, s, t] = await Promise.all([
@@ -88,6 +95,25 @@ export default function AthleteDetail() {
         else load()
       })
   }, [router, load])
+
+  async function handleArchiveToggle() {
+    if (!athlete) return
+    const action = athlete.archived ? 'restore' : 'archive'
+    if (
+      action === 'archive' &&
+      !confirm(
+        `Archive ${athlete.firstName}? They'll come off the roster and their upcoming sessions will be cancelled. You can restore them later.`
+      )
+    ) {
+      return
+    }
+    setBusy('archive')
+    const res = await fetch(`/api/athletes/${athleteId}/${action}`, { method: 'POST' })
+    const data = await res.json()
+    if (!data.success) alert(data.error ?? 'Could not update.')
+    await load()
+    setBusy(null)
+  }
 
   async function toggleActive(slot: StandingSlot) {
     setBusy(slot.id)
@@ -166,9 +192,35 @@ export default function AthleteDetail() {
       </header>
 
       <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
+        {athlete.archived && (
+          <div className="rounded-2xl bg-amber-100 text-amber-900 px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="dsc-label">Archived</div>
+              <p className="text-sm mt-0.5">
+                Off the roster and unable to sign in. Restore to bring them back.
+              </p>
+            </div>
+            <button
+              onClick={handleArchiveToggle}
+              disabled={busy === 'archive'}
+              className="h-9 px-4 shrink-0 bg-black text-white rounded-full dsc-headline text-sm disabled:opacity-40"
+            >
+              Restore
+            </button>
+          </div>
+        )}
+
         {/* Identity card */}
         <div className="rounded-3xl bg-black/[0.04] p-5">
-          <div className="dsc-label text-black/40 mb-1">Athlete</div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="dsc-label text-black/40 mb-1">Athlete</div>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="h-8 px-3 shrink-0 bg-black text-white rounded-full dsc-headline text-xs"
+            >
+              Edit
+            </button>
+          </div>
           <h1 className="dsc-headline text-3xl md:text-4xl text-black mb-3 leading-[0.95]">
             {athlete.firstName}
             <br />
@@ -313,7 +365,65 @@ export default function AthleteDetail() {
             </div>
           )}
         </div>
+
+        {/* Danger zone */}
+        <div className="rounded-3xl border border-black/10 p-5">
+          <div className="dsc-label text-black/40 mb-1">Danger zone</div>
+          <h2 className="dsc-headline text-2xl text-black leading-tight mb-3">
+            Remove athlete
+          </h2>
+          <div className="space-y-3">
+            {!athlete.archived && (
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <p className="text-sm text-black/60 flex-1 min-w-[200px]">
+                  <span className="font-medium text-black">Archive</span> — takes them off
+                  the roster and cancels upcoming sessions. Everything is kept and can be
+                  undone.
+                </p>
+                <button
+                  onClick={handleArchiveToggle}
+                  disabled={busy === 'archive'}
+                  className="h-9 px-4 bg-black text-white rounded-full dsc-headline text-sm disabled:opacity-40"
+                >
+                  Archive
+                </button>
+              </div>
+            )}
+            <div className="flex items-start justify-between gap-3 flex-wrap pt-3 border-t border-black/10">
+              <p className="text-sm text-black/60 flex-1 min-w-[200px]">
+                <span className="font-medium text-black">Delete permanently</span> — erases
+                the profile, their sessions and check-ins. This cannot be undone.
+              </p>
+              <button
+                onClick={() => setShowDelete(true)}
+                className="h-9 px-4 border border-red-300 text-red-700 rounded-full dsc-headline text-sm hover:bg-red-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {showEdit && athlete && (
+        <EditAthleteSheet
+          athlete={athlete}
+          trainers={trainers}
+          onClose={() => setShowEdit(false)}
+          onSaved={async () => {
+            setShowEdit(false)
+            await load()
+          }}
+        />
+      )}
+
+      {showDelete && athlete && (
+        <DeleteAthleteSheet
+          athlete={athlete}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => router.replace('/admin/athletes')}
+        />
+      )}
 
       {showAddSlot && (
         <AddStandingSlotSheet
@@ -510,5 +620,312 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="dsc-label text-black/40 mb-1.5">{label}</div>
       {children}
     </label>
+  )
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean
+  onChange: (on: boolean) => void
+  label: string
+  hint: string
+}) {
+  return (
+    <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 w-4 h-4 accent-black shrink-0"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-black">{label}</span>
+        <span className="block text-xs text-black/50 mt-0.5">{hint}</span>
+      </span>
+    </label>
+  )
+}
+
+function EditAthleteSheet({
+  athlete,
+  trainers,
+  onClose,
+  onSaved,
+}: {
+  athlete: Athlete
+  trainers: TrainerOpt[]
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [firstName, setFirstName] = useState(athlete.firstName)
+  const [lastName, setLastName] = useState(athlete.lastName)
+  const [email, setEmail] = useState(athlete.email)
+  const [phone, setPhone] = useState(athlete.phone ?? '')
+  // The API stores a DATE; slice to YYYY-MM-DD for the native date input.
+  const [birthdate, setBirthdate] = useState(athlete.birthdate?.slice(0, 10) ?? '')
+  const [address, setAddress] = useState(athlete.address ?? '')
+  const [trainerId, setTrainerId] = useState(athlete.trainerId ?? '')
+  const [emailOptOut, setEmailOptOut] = useState(athlete.emailOptOut ?? false)
+  const [smsOptIn, setSmsOptIn] = useState(athlete.smsOptIn ?? false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    setSubmitting(true)
+    setError(null)
+    const res = await fetch(`/api/athletes/${athlete.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        email,
+        phone,
+        birthdate,
+        address,
+        trainerId: trainerId === '' ? null : trainerId,
+        emailOptOut,
+        smsOptIn,
+      }),
+    })
+    const data = await res.json()
+    setSubmitting(false)
+    if (!data.success) {
+      setError(data.error ?? 'Could not save.')
+      return
+    }
+    await onSaved()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end md:items-center md:justify-center bg-black/40 dsc-sheet-backdrop"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[85vh] overflow-y-auto dsc-sheet-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+          <div>
+            <div className="dsc-label text-black/40">Athlete</div>
+            <div className="dsc-headline text-2xl text-black">Edit profile</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-black/5 flex items-center justify-center text-black/60"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="px-5 pb-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="First name">
+              <input
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </Field>
+            <Field label="Last name">
+              <input
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </Field>
+          </div>
+
+          <Field label="Email">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Mobile">
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="214-555-0123"
+                className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </Field>
+            <Field label="Birthdate">
+              <input
+                type="date"
+                value={birthdate}
+                onChange={(e) => setBirthdate(e.target.value)}
+                className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </Field>
+          </div>
+
+          <Field label="Trainer">
+            <select
+              value={trainerId}
+              onChange={(e) => setTrainerId(e.target.value)}
+              className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+            >
+              <option value="">Unassigned</option>
+              {trainers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.user.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Address (optional)">
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
+            />
+          </Field>
+
+          <div>
+            <div className="dsc-label text-black/50 mb-1">Contact</div>
+            <div className="space-y-2">
+              <Toggle
+                checked={smsOptIn}
+                onChange={setSmsOptIn}
+                label="Texts"
+                hint="Reminders by SMS as well as email. Off until they say yes."
+              />
+              <Toggle
+                checked={!emailOptOut}
+                onChange={(on) => setEmailOptOut(!on)}
+                label="Announcements"
+                hint="Gym-wide emails. Reminders and confirmations send either way."
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-xl bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>
+          )}
+
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className="w-full h-12 bg-black text-white rounded-full dsc-headline text-base disabled:opacity-40"
+            >
+              {submitting ? 'Saving…' : 'Save changes'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={submitting}
+              className="w-full h-12 text-black/60 rounded-full text-sm hover:text-black disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeleteAthleteSheet({
+  athlete,
+  onClose,
+  onDeleted,
+}: {
+  athlete: Athlete
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [typed, setTyped] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const expected = `${athlete.firstName} ${athlete.lastName}`
+  const matches = typed.trim() === expected
+
+  async function submit() {
+    setSubmitting(true)
+    setError(null)
+    const res = await fetch(`/api/athletes/${athlete.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmName: typed.trim() }),
+    })
+    const data = await res.json()
+    setSubmitting(false)
+    if (!data.success) {
+      setError(data.error ?? 'Could not delete.')
+      return
+    }
+    onDeleted()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end md:items-center md:justify-center bg-black/40 dsc-sheet-backdrop"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[85vh] overflow-y-auto dsc-sheet-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3">
+          <div className="dsc-label text-red-700">Permanent</div>
+          <div className="dsc-headline text-2xl text-black">Delete {athlete.firstName}?</div>
+        </div>
+
+        <div className="px-5 pb-5 space-y-4">
+          <p className="text-sm text-black/70 leading-snug">
+            This erases the profile, {athlete._count.sessions} session
+            {athlete._count.sessions === 1 ? '' : 's'} and {athlete._count.checkIns} check-in
+            {athlete._count.checkIns === 1 ? '' : 's'}. Group sessions they shared with
+            others are kept for the rest of the group. This cannot be undone.
+          </p>
+          <p className="text-sm text-black/70 leading-snug">
+            If you just want them off the roster,{' '}
+            <span className="font-medium text-black">archive</span> them instead.
+          </p>
+
+          <Field label={`Type "${expected}" to confirm`}>
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={expected}
+              className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-red-200"
+            />
+          </Field>
+
+          {error && (
+            <div className="rounded-xl bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>
+          )}
+
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={submit}
+              disabled={!matches || submitting}
+              className="w-full h-12 bg-red-600 text-white rounded-full dsc-headline text-base disabled:bg-black/20 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Deleting…' : 'Delete permanently'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={submitting}
+              className="w-full h-12 text-black/60 rounded-full text-sm hover:text-black disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

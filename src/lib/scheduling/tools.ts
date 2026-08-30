@@ -4,6 +4,9 @@
 
 import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
+import { materializeGroup } from '@/lib/scheduling/engine'
+import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { hashPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -488,12 +491,194 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
       },
       required: ['athleteId', 'dayOfWeek', 'startMinute'],
     },
+  },
+  {
+    name: 'list_groups',
+    description:
+      "List the gym's named training groups (e.g. 'the basketball group') with their weekly time, members and coaches. Use this to resolve a group the owner refers to by name.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        includeInactive: { type: 'boolean', description: 'Defaults to false.' },
+      },
+    },
+  },
+  {
+    name: 'create_group',
+    description:
+      "Create a named training group with an optional weekly time, a roster of athletes and one or more coaches. Example: 'basketball group, Mondays at 11am, these kids'. The first coach listed is the lead. Creating a group does NOT book anything — call materialize_group to put sessions on the calendar.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        athleteIds: { type: 'array', items: { type: 'string' } },
+        coachIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Trainer ids. First one becomes the lead coach.',
+        },
+        dayOfWeek: { type: 'number', description: '0=Sun..6=Sat. Omit for a roster-only group.' },
+        time: { type: 'string', description: '"HH:MM" 24h, gym-local.' },
+        duration: { type: 'number', description: 'Defaults to 60.' },
+        notes: { type: 'string' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'update_group',
+    description:
+      'Change a group: rename, add or remove members or coaches, set the lead coach, change the weekly time, or pause it. Only pass what changes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'string' },
+        name: { type: 'string' },
+        addAthleteIds: { type: 'array', items: { type: 'string' } },
+        removeAthleteIds: { type: 'array', items: { type: 'string' } },
+        addCoachIds: { type: 'array', items: { type: 'string' } },
+        removeCoachIds: { type: 'array', items: { type: 'string' } },
+        setLeadCoachId: { type: 'string' },
+        dayOfWeek: { type: 'number' },
+        time: { type: 'string', description: '"HH:MM" 24h, gym-local.' },
+        duration: { type: 'number' },
+        active: { type: 'boolean' },
+        notes: { type: 'string' },
+      },
+      required: ['groupId'],
+    },
+  },
+  {
+    name: 'materialize_group',
+    description:
+      "Put a group's weekly sessions on the calendar for the next N weeks. Skips weeks that are already booked or that conflict, and reports both. Safe to run twice.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'string' },
+        weeks: { type: 'number', description: 'Defaults to 8.' },
+      },
+      required: ['groupId'],
+    },
+  },
+  {
+    name: 'draft_email_blast',
+    description:
+      "Prepare an announcement email to a set of athletes and report who it would reach. This NEVER sends. Always call this first, read the audience and copy back to the owner, and only call send_email_blast if they confirm.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        audience: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['all', 'group', 'age_band'] },
+            groupName: { type: 'string', description: 'For kind=group.' },
+            minAge: { type: 'number', description: 'For kind=age_band, inclusive.' },
+            maxAge: { type: 'number', description: 'For kind=age_band, inclusive.' },
+          },
+          required: ['kind'],
+        },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain text. Blank lines separate paragraphs.' },
+      },
+      required: ['audience', 'subject', 'body'],
+    },
+  },
+  {
+    name: 'send_email_blast',
+    description:
+      'Actually send a drafted blast. Only call after the owner has explicitly confirmed the audience, subject and body you read back to them.',
+    input_schema: {
+      type: 'object',
+      properties: { blastId: { type: 'string' } },
+      required: ['blastId'],
+    },
+  },
+  {
+    name: 'discard_email_blast',
+    description: 'Throw away a drafted blast the owner decided against.',
+    input_schema: {
+      type: 'object',
+      properties: { blastId: { type: 'string' } },
+      required: ['blastId'],
+    },
+  },
+  {
+    name: 'create_meeting',
+    description:
+      "Put a staff meeting on the company calendar (not a training session). Blocks the trainers involved from being booked at that time. Leave trainerIds empty for an all-staff meeting.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        dateISO: { type: 'string', description: 'ISO datetime WITH timezone offset.' },
+        duration: { type: 'number', description: 'Minutes. Defaults to 60.' },
+        trainerIds: { type: 'array', items: { type: 'string' } },
+        description: { type: 'string' },
+      },
+      required: ['title', 'dateISO'],
+    },
+  },
+  {
+    name: 'list_meetings',
+    description: 'Staff meetings on the company calendar in a date range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        startDateISO: { type: 'string' },
+        endDateISO: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'cancel_meeting',
+    description:
+      'Take a staff meeting off the company calendar. Use list_meetings first to get the id. The trainers involved are free to be booked again straight away.',
+    input_schema: {
+      type: 'object',
+      properties: { eventId: { type: 'string' } },
+      required: ['eventId'],
+    },
+  },
+  {
+    name: 'log_recovery_visit',
+    description:
+      "Record a recovery-room visit for an athlete so it appears on their monthly charges. Uses the gym's default price unless one is given.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        athleteId: { type: 'string' },
+        priceCents: { type: 'number' },
+        note: { type: 'string' },
+        dateISO: { type: 'string' },
+      },
+      required: ['athleteId'],
+    },
+  },
+  {
+    name: 'list_recovery_charges',
+    description: 'Recovery-room totals per athlete for a month (YYYY-MM). Defaults to this month.',
+    input_schema: {
+      type: 'object',
+      properties: { month: { type: 'string', description: '"YYYY-MM"' } },
+    },
+  },
+  {
+    name: 'list_extra_checkins',
+    description:
+      "Athletes who checked in without a scheduled session — i.e. coming more often than they're booked. Note: a check-in only matches the FIRST session that day, so an athlete with two sessions in one day can show a false extra.",
+    input_schema: {
+      type: 'object',
+      properties: { sinceDays: { type: 'number', description: 'Defaults to 30.' } },
+    },
     // cache_control on the LAST tool caches every tool definition up to
     // and including this one. Tools are huge (~5k tokens) and rarely
     // change, so caching them is the biggest single cost win.
     cache_control: { type: 'ephemeral' },
   },
 ]
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 interface DispatchContext {
   gymId: string
@@ -1070,15 +1255,16 @@ export async function dispatchTool(
         providedEmail ||
         `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}@placeholder.com`
 
-      // Check for collision on real email.
+      // A shared email is now a FAMILY, not a collision — a parent adding a
+      // second kid uses the same address on purpose. Report it instead of
+      // refusing, so the model can tell the owner what it's about to do.
+      let joiningFamilyOf: string[] = []
       if (providedEmail) {
-        const existing = await db.athlete.findUnique({ where: { email } })
-        if (existing) {
-          return {
-            error: `An athlete with email ${email} already exists.`,
-            existingAthleteId: existing.id,
-          }
-        }
+        const siblings = await db.athlete.findMany({
+          where: { email, archived: false },
+          select: { firstName: true, lastName: true },
+        })
+        joiningFamilyOf = siblings.map((a) => `${a.firstName} ${a.lastName}`)
       }
 
       const athlete = await db.athlete.create({
@@ -1098,6 +1284,12 @@ export async function dispatchTool(
         name: `${athlete.firstName} ${athlete.lastName}`,
         emailUsed: email,
         wasPlaceholderEmail: !providedEmail,
+        ...(joiningFamilyOf.length
+          ? {
+              joinedFamilyOf: joiningFamilyOf,
+              note: `That email is already used by ${joiningFamilyOf.join(', ')}. They now share one login — mention this to the owner.`,
+            }
+          : {}),
       }
     }
 
@@ -1235,54 +1427,12 @@ export async function dispatchTool(
     }
 
     case 'archive_athlete': {
-      const athleteId = String(input.athleteId)
-      const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
-      if (!athlete || athlete.gymId !== gymId) {
-        return { error: 'Athlete not found.' }
-      }
-
-      const cancelFuture = input.cancelFutureSessions !== false
-      let cancelled = 0
-
-      await db.athlete.update({ where: { id: athleteId }, data: { archived: true } })
-
-      if (cancelFuture) {
-        // Cancel sessions where they're the primary OR an attendee.
-        const futureWhere = {
-          cancelled: false,
-          scheduledAt: { gte: new Date() },
-          OR: [
-            { athleteId },
-            { attendees: { some: { athleteId } } },
-          ],
-        }
-        const sessions = await db.session.findMany({
-          where: futureWhere,
-          include: { attendees: true },
-        })
-        for (const s of sessions) {
-          // If group session and this is just one of many, drop them from
-          // attendees rather than cancelling the whole group.
-          const otherAttendees = s.attendees.filter((a) => a.athleteId !== athleteId)
-          if (otherAttendees.length > 0 && s.athleteId !== athleteId) {
-            await db.sessionAttendee.deleteMany({
-              where: { sessionId: s.id, athleteId },
-            })
-          } else {
-            await db.session.update({
-              where: { id: s.id },
-              data: { cancelled: true },
-            })
-            cancelled++
-          }
-        }
-      }
-
-      return {
-        ok: true,
-        athleteName: `${athlete.firstName} ${athlete.lastName}`,
-        sessionsCancelled: cancelled,
-      }
+      // Shared with the admin UI (POST /api/athletes/[id]/archive) so the two
+      // surfaces can't drift — see src/lib/athletes.ts.
+      const result = await archiveAthlete(gymId, String(input.athleteId), {
+        cancelFutureSessions: input.cancelFutureSessions !== false,
+      })
+      return result
     }
 
     case 'unarchive_trainer': {
@@ -1296,13 +1446,397 @@ export async function dispatchTool(
     }
 
     case 'unarchive_athlete': {
+      return await unarchiveAthlete(gymId, String(input.athleteId))
+    }
+
+    case 'create_meeting': {
+      const title = String(input.title ?? '').trim()
+      if (!title) return { error: 'Meeting needs a title.' }
+      const startsAt = new Date(String(input.dateISO))
+      if (Number.isNaN(startsAt.getTime())) return { error: 'dateISO is not a valid datetime.' }
+      const duration = Number(input.duration ?? 60)
+      const trainerIds = Array.isArray(input.trainerIds)
+        ? (input.trainerIds as string[]).map(String)
+        : []
+
+      const end = new Date(startsAt.getTime() + duration * 60_000)
+      const clash = await db.session.findMany({
+        where: {
+          gymId,
+          cancelled: false,
+          scheduledAt: { gte: new Date(startsAt.getTime() - 12 * 3600_000), lt: end },
+          ...(trainerIds.length ? { trainerId: { in: trainerIds } } : {}),
+        },
+        include: { trainer: { include: { user: true } }, athlete: true },
+      })
+      const warnings = clash
+        .filter((c) => {
+          const cEnd = new Date(c.scheduledAt.getTime() + c.duration * 60_000)
+          return c.scheduledAt < end && cEnd > startsAt
+        })
+        .map((c) => `${c.trainer.user.name} has ${c.athlete.firstName} ${c.athlete.lastName} then`)
+
+      const ev = await db.calendarEvent.create({
+        data: { gymId, title, startsAt, duration, trainerIds,
+          description: input.description ? String(input.description) : null },
+      })
+      return {
+        ok: true,
+        eventId: ev.id,
+        title,
+        allStaff: trainerIds.length === 0,
+        // Reported, not blocked — the owner usually means to move training.
+        warnings,
+      }
+    }
+
+    case 'list_meetings': {
+      const events = await db.calendarEvent.findMany({
+        where: {
+          gymId,
+          cancelled: false,
+          ...(input.startDateISO && input.endDateISO
+            ? {
+                startsAt: {
+                  gte: new Date(String(input.startDateISO)),
+                  lt: new Date(String(input.endDateISO)),
+                },
+              }
+            : {}),
+        },
+        orderBy: { startsAt: 'asc' },
+        take: 50,
+      })
+      return {
+        meetings: events.map((e) => ({
+          id: e.id,
+          title: e.title,
+          startsAt: e.startsAt.toISOString(),
+          duration: e.duration,
+          allStaff: e.trainerIds.length === 0,
+        })),
+      }
+    }
+
+    case 'cancel_meeting': {
+      const eventId = String(input.eventId ?? '')
+      const ev = await db.calendarEvent.findUnique({ where: { id: eventId } })
+      if (!ev || ev.gymId !== gymId) return { error: 'Meeting not found.' }
+      if (ev.cancelled) return { ok: true, alreadyCancelled: true, title: ev.title }
+      await db.calendarEvent.update({ where: { id: eventId }, data: { cancelled: true } })
+      return { ok: true, title: ev.title, startsAt: ev.startsAt.toISOString() }
+    }
+
+    case 'log_recovery_visit': {
       const athleteId = String(input.athleteId)
       const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
-      if (!athlete || athlete.gymId !== gymId) {
-        return { error: 'Athlete not found.' }
+      if (!athlete || athlete.gymId !== gymId) return { error: 'Athlete not found.' }
+      const config = await db.gymConfig.findUnique({ where: { gymId } })
+      const priceCents =
+        input.priceCents !== undefined
+          ? Number(input.priceCents)
+          : (config?.recoveryPriceCents ?? 2500)
+      const visit = await db.recoveryVisit.create({
+        data: {
+          gymId,
+          athleteId,
+          at: input.dateISO ? new Date(String(input.dateISO)) : new Date(),
+          priceCents,
+          note: input.note ? String(input.note) : null,
+          createdBy: 'chat',
+        },
+      })
+      return {
+        ok: true,
+        visitId: visit.id,
+        athlete: `${athlete.firstName} ${athlete.lastName}`,
+        price: `$${(priceCents / 100).toFixed(2)}`,
       }
-      await db.athlete.update({ where: { id: athleteId }, data: { archived: false } })
-      return { ok: true }
+    }
+
+    case 'list_recovery_charges': {
+      const month = String(input.month ?? new Date().toISOString().slice(0, 7))
+      const [y, m] = month.split('-').map(Number)
+      if (!y || !m) return { error: 'month must be "YYYY-MM".' }
+      const from = new Date(Date.UTC(y, m - 1, 1))
+      const to = new Date(Date.UTC(y, m, 1))
+      const visits = await db.recoveryVisit.findMany({
+        where: { gymId, at: { gte: from, lt: to } },
+        include: { athlete: { select: { firstName: true, lastName: true } } },
+      })
+      const totals = new Map<string, { name: string; visits: number; cents: number }>()
+      for (const v of visits) {
+        const name = `${v.athlete.firstName} ${v.athlete.lastName}`
+        const row = totals.get(name) ?? { name, visits: 0, cents: 0 }
+        row.visits++
+        row.cents += v.priceCents
+        totals.set(name, row)
+      }
+      return {
+        month,
+        totalCharged: `$${(visits.reduce((n, v) => n + v.priceCents, 0) / 100).toFixed(2)}`,
+        perAthlete: [...totals.values()]
+          .sort((a, b) => b.cents - a.cents)
+          .map((r) => ({ name: r.name, visits: r.visits, total: `$${(r.cents / 100).toFixed(2)}` })),
+      }
+    }
+
+    case 'list_extra_checkins': {
+      const days = Math.min(Math.max(Number(input.sinceDays ?? 30), 1), 365)
+      const since = new Date(Date.now() - days * 86400_000)
+      const grouped = await db.checkIn.groupBy({
+        by: ['athleteId'],
+        where: { gymId, matched: false, checkInTime: { gte: since } },
+        _count: { _all: true },
+      })
+      const ids = grouped.map((g) => g.athleteId).filter((x): x is string => !!x)
+      const athletes = await db.athlete.findMany({
+        where: { id: { in: ids }, archived: false },
+        select: { id: true, firstName: true, lastName: true },
+      })
+      const byId = new Map(athletes.map((a) => [a.id, a]))
+      return {
+        sinceDays: days,
+        athletes: grouped
+          .filter((g) => g.athleteId && byId.has(g.athleteId))
+          .map((g) => ({
+            name: `${byId.get(g.athleteId!)!.firstName} ${byId.get(g.athleteId!)!.lastName}`,
+            extraVisits: g._count._all,
+          }))
+          .sort((a, b) => b.extraVisits - a.extraVisits),
+        caveat:
+          'A check-in only matches the first session that day, so someone with two sessions in one day can appear here incorrectly.',
+      }
+    }
+
+    case 'draft_email_blast': {
+      const a = (input.audience ?? {}) as Record<string, unknown>
+      const kind = String(a.kind ?? '')
+      if (!['all', 'group', 'age_band'].includes(kind)) {
+        return { error: 'audience.kind must be all, group or age_band.' }
+      }
+      const spec =
+        kind === 'group'
+          ? { kind: 'group' as const, groupName: a.groupName ? String(a.groupName) : undefined }
+          : kind === 'age_band'
+            ? {
+                kind: 'age_band' as const,
+                minAge: a.minAge === undefined ? undefined : Number(a.minAge),
+                maxAge: a.maxAge === undefined ? undefined : Number(a.maxAge),
+              }
+            : { kind: 'all' as const }
+
+      const result = await createBlastDraft({
+        gymId,
+        spec,
+        subject: String(input.subject ?? '').trim(),
+        body: String(input.body ?? '').trim(),
+        source: 'ai_chat',
+      })
+      if ('error' in result) return { error: result.error }
+      return {
+        ok: true,
+        blastId: result.blast.id,
+        audience: result.audience.label,
+        recipientCount: result.audience.uniqueEmails,
+        sample: result.audience.recipients.slice(0, 5).map((r) => `${r.firstName} ${r.lastName[0]}.`),
+        excluded: result.audience.excluded,
+        note: 'NOTHING HAS BEEN SENT. Read this back to the owner and wait for an explicit yes before calling send_email_blast.',
+      }
+    }
+
+    case 'send_email_blast': {
+      const blastId = String(input.blastId)
+      const blast = await db.blast.findUnique({ where: { id: blastId } })
+      if (!blast || blast.gymId !== gymId) return { error: 'Blast not found.' }
+      const base =
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        (process.env.VERCEL_PROJECT_PRODUCTION_URL
+          ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+          : 'http://localhost:3000')
+      const result = await sendBlast(blastId, base)
+      if ('error' in result) return { error: result.error }
+      return { ok: true, ...result }
+    }
+
+    case 'discard_email_blast': {
+      const blastId = String(input.blastId)
+      const updated = await db.blast.updateMany({
+        where: { id: blastId, gymId, status: 'draft' },
+        data: { status: 'discarded' },
+      })
+      return updated.count === 1
+        ? { ok: true }
+        : { error: 'That blast is not a draft any more.' }
+    }
+
+    case 'list_groups': {
+      const groups = await db.group.findMany({
+        where: { gymId, ...(input.includeInactive ? {} : { active: true }) },
+        include: {
+          members: { include: { athlete: { select: { firstName: true, lastName: true, archived: true } } } },
+          coaches: { include: { trainer: { select: { id: true, user: { select: { name: true } } } } } },
+        },
+        orderBy: { name: 'asc' },
+      })
+      return {
+        groups: groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          active: g.active,
+          when:
+            g.dayOfWeek !== null && g.startMinute !== null
+              ? `${DAY_NAMES[g.dayOfWeek]} ${formatMinute(g.startMinute)} (${g.duration}min)`
+              : 'no weekly time set',
+          coaches: g.coaches
+            .sort((a, b) => Number(b.isLead) - Number(a.isLead))
+            .map((c) => ({ id: c.trainerId, name: c.trainer.user.name, lead: c.isLead })),
+          members: g.members
+            .filter((m) => !m.athlete.archived)
+            .map((m) => `${m.athlete.firstName} ${m.athlete.lastName}`),
+          memberCount: g.members.filter((m) => !m.athlete.archived).length,
+        })),
+      }
+    }
+
+    case 'create_group': {
+      const name = String(input.name ?? '').trim()
+      if (!name) return { error: 'Group needs a name.' }
+      const athleteIds: string[] = Array.isArray(input.athleteIds)
+        ? (input.athleteIds as string[]).map(String)
+        : []
+      const coachIds: string[] = Array.isArray(input.coachIds)
+        ? (input.coachIds as string[]).map(String)
+        : []
+      let startMinute: number | null = null
+      if (typeof input.time === 'string') {
+        const m = input.time.match(/^(\d{1,2}):(\d{2})$/)
+        if (!m) return { error: 'time must be "HH:MM" in 24h form.' }
+        startMinute = Number(m[1]) * 60 + Number(m[2])
+      }
+      const dayOfWeek =
+        input.dayOfWeek === undefined || input.dayOfWeek === null
+          ? null
+          : Number(input.dayOfWeek)
+      if (dayOfWeek !== null && (dayOfWeek < 0 || dayOfWeek > 6)) {
+        return { error: 'dayOfWeek must be 0 (Sun) to 6 (Sat).' }
+      }
+      try {
+        const group = await db.group.create({
+          data: {
+            gymId,
+            name,
+            dayOfWeek,
+            startMinute,
+            duration: input.duration ? Number(input.duration) : 60,
+            notes: input.notes ? String(input.notes) : null,
+            members: { create: athleteIds.map((athleteId) => ({ athleteId })) },
+            coaches: {
+              create: coachIds.map((trainerId, i) => ({ trainerId, isLead: i === 0 })),
+            },
+          },
+        })
+        return {
+          ok: true,
+          groupId: group.id,
+          name: group.name,
+          memberCount: athleteIds.length,
+          coachCount: coachIds.length,
+          when:
+            dayOfWeek !== null && startMinute !== null
+              ? `${DAY_NAMES[dayOfWeek]} ${formatMinute(startMinute)}`
+              : 'no weekly time set',
+          note: 'Nothing is on the calendar yet — call materialize_group when the owner confirms.',
+        }
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2002') {
+          return { error: `A group named "${name}" already exists.` }
+        }
+        throw err
+      }
+    }
+
+    case 'update_group': {
+      const groupId = String(input.groupId)
+      const group = await db.group.findUnique({ where: { id: groupId } })
+      if (!group || group.gymId !== gymId) return { error: 'Group not found.' }
+
+      const data: Record<string, unknown> = {}
+      if (input.name !== undefined) data.name = String(input.name).trim()
+      if (input.dayOfWeek !== undefined)
+        data.dayOfWeek = input.dayOfWeek === null ? null : Number(input.dayOfWeek)
+      if (typeof input.time === 'string') {
+        const m = input.time.match(/^(\d{1,2}):(\d{2})$/)
+        if (!m) return { error: 'time must be "HH:MM" in 24h form.' }
+        data.startMinute = Number(m[1]) * 60 + Number(m[2])
+      }
+      if (input.duration !== undefined) data.duration = Number(input.duration)
+      if (input.active !== undefined) data.active = Boolean(input.active)
+      if (input.notes !== undefined) data.notes = input.notes ? String(input.notes) : null
+
+      if (Object.keys(data).length) await db.group.update({ where: { id: groupId }, data })
+
+      for (const athleteId of (input.addAthleteIds as string[] | undefined) ?? []) {
+        await db.groupMember.upsert({
+          where: { groupId_athleteId: { groupId, athleteId: String(athleteId) } },
+          create: { groupId, athleteId: String(athleteId) },
+          update: {},
+        })
+      }
+      if (Array.isArray(input.removeAthleteIds) && input.removeAthleteIds.length) {
+        await db.groupMember.deleteMany({
+          where: { groupId, athleteId: { in: (input.removeAthleteIds as string[]).map(String) } },
+        })
+      }
+      for (const trainerId of (input.addCoachIds as string[] | undefined) ?? []) {
+        await db.groupCoach.upsert({
+          where: { groupId_trainerId: { groupId, trainerId: String(trainerId) } },
+          create: { groupId, trainerId: String(trainerId), isLead: false },
+          update: {},
+        })
+      }
+      if (Array.isArray(input.removeCoachIds) && input.removeCoachIds.length) {
+        await db.groupCoach.deleteMany({
+          where: { groupId, trainerId: { in: (input.removeCoachIds as string[]).map(String) } },
+        })
+      }
+      if (input.setLeadCoachId) {
+        await db.groupCoach.updateMany({ where: { groupId }, data: { isLead: false } })
+        await db.groupCoach.updateMany({
+          where: { groupId, trainerId: String(input.setLeadCoachId) },
+          data: { isLead: true },
+        })
+      }
+
+      const after = await db.group.findUnique({
+        where: { id: groupId },
+        include: {
+          members: { include: { athlete: { select: { firstName: true, lastName: true } } } },
+          coaches: { include: { trainer: { select: { user: { select: { name: true } } } } } },
+        },
+      })
+      return {
+        ok: true,
+        name: after?.name,
+        members: after?.members.map((m) => `${m.athlete.firstName} ${m.athlete.lastName}`) ?? [],
+        coaches: after?.coaches.map((c) => c.trainer.user.name) ?? [],
+        note: 'Roster changes affect future materializations, not sessions already on the calendar.',
+      }
+    }
+
+    case 'materialize_group': {
+      const groupId = String(input.groupId)
+      const group = await db.group.findUnique({ where: { id: groupId } })
+      if (!group || group.gymId !== gymId) return { error: 'Group not found.' }
+      const weeks = Math.min(Math.max(Number(input.weeks ?? 8), 1), 26)
+      const result = await materializeGroup(groupId, weeks)
+      return {
+        ok: true,
+        groupName: group.name,
+        created: result.created.length,
+        skipped: result.skipped.length,
+        skippedDetail: result.skipped.slice(0, 8),
+      }
     }
 
     case 'set_athlete_standing_slot': {

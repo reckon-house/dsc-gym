@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
   SessionEditSheet,
   type SessionDraft,
 } from '../../_components/SessionEditSheet'
+import { MeetingSheet, type MeetingDraft } from '../../_components/MeetingSheet'
+import { RecoverySheet, type RecoveryDraft } from '../../_components/RecoverySheet'
 
 interface DaySession {
   id: string
@@ -22,6 +24,22 @@ interface DaySession {
   attendees?: { id: string; firstName: string; lastName: string }[]
 }
 
+interface DayMeeting {
+  id: string
+  title: string
+  startsAt: string
+  duration: number
+  trainerIds: string[]
+}
+
+interface DayRecovery {
+  id: string
+  at: string
+  priceCents: number
+  note: string | null
+  athlete: { id: string; firstName: string; lastName: string }
+}
+
 interface TrainerOpt {
   id: string
   user: { name: string }
@@ -33,6 +51,12 @@ interface AthleteOpt {
   lastName: string
   trainerId: string | null
 }
+
+/** Everything that happened on the floor that day, on one clock. */
+type TimelineItem =
+  | { kind: 'session'; at: number; session: DaySession }
+  | { kind: 'meeting'; at: number; meeting: DayMeeting }
+  | { kind: 'recovery'; at: number; visit: DayRecovery }
 
 function fmtTime(iso: string): string {
   return new Date(iso)
@@ -58,25 +82,77 @@ function dateKey(d: Date): string {
 export default function CalendarDayDetail() {
   const router = useRouter()
   const params = useParams<{ date: string }>()
-  const date = parseDateKey(params.date)
+  const searchParams = useSearchParams()
+  // Carried over from the week view's trainer filter, so drilling into a day
+  // doesn't silently widen the view back to everyone.
+  const filterTrainerId = searchParams.get('trainerId') ?? ''
+  // Memoized on the URL string, not recomputed per render. parseDateKey mints
+  // a new Date object every call, and an unstable `date` invalidates every
+  // memo and callback below it — which sends the load effects into a fetch
+  // loop that only stops when the browser runs out of sockets.
+  const date = useMemo(() => parseDateKey(params.date), [params.date])
   const [sessions, setSessions] = useState<DaySession[]>([])
+  const [meetings, setMeetings] = useState<DayMeeting[]>([])
+  const [recovery, setRecovery] = useState<DayRecovery[]>([])
+  const [defaultPriceCents, setDefaultPriceCents] = useState(2500)
   const [trainers, setTrainers] = useState<TrainerOpt[]>([])
   const [athletes, setAthletes] = useState<AthleteOpt[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [draft, setDraft] = useState<SessionDraft | null>(null)
+  const [meetingOpen, setMeetingOpen] = useState(false)
+  const [meetingDraft, setMeetingDraft] = useState<MeetingDraft | null>(null)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
+  const [recoveryDraft, setRecoveryDraft] = useState<RecoveryDraft | null>(null)
 
-  const loadSessions = useCallback(async () => {
-    if (!date) return
+  // The day's local bounds, shared by all three fetches.
+  const bounds = useMemo(() => {
+    if (!date) return null
     const start = new Date(date)
     start.setHours(0, 0, 0, 0)
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
-    const res = await fetch(
-      `/api/sessions?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-    )
+    return { start, end }
+  }, [date])
+
+  const loadSessions = useCallback(async () => {
+    if (!bounds) return
+    const qs = new URLSearchParams({
+      startDate: bounds.start.toISOString(),
+      endDate: bounds.end.toISOString(),
+    })
+    if (filterTrainerId) qs.set('trainerId', filterTrainerId)
+    const res = await fetch(`/api/sessions?${qs.toString()}`)
     const data = await res.json()
     if (data.success) setSessions(data.data)
-  }, [date])
+  }, [bounds, filterTrainerId])
+
+  const loadMeetings = useCallback(async () => {
+    if (!bounds) return
+    const res = await fetch(
+      `/api/admin/calendar-events?startDate=${bounds.start.toISOString()}&endDate=${bounds.end.toISOString()}`
+    )
+    const data = await res.json()
+    if (!data.success) return
+    const all: DayMeeting[] = data.data
+    // An all-staff meeting has no trainerIds and blocks everyone, so it stays
+    // visible however the filter is narrowed.
+    setMeetings(
+      filterTrainerId
+        ? all.filter((m) => m.trainerIds.length === 0 || m.trainerIds.includes(filterTrainerId))
+        : all
+    )
+  }, [bounds, filterTrainerId])
+
+  const loadRecovery = useCallback(async () => {
+    if (!bounds) return
+    const res = await fetch(
+      `/api/admin/recovery?from=${bounds.start.toISOString()}&to=${bounds.end.toISOString()}`
+    )
+    const data = await res.json()
+    if (!data.success) return
+    setRecovery(data.data.visits)
+    setDefaultPriceCents(data.data.defaultPriceCents ?? 2500)
+  }, [bounds])
 
   const loadOptions = useCallback(async () => {
     const [t, a] = await Promise.all([
@@ -113,8 +189,10 @@ export default function CalendarDayDetail() {
 
   useEffect(() => {
     loadSessions()
+    loadMeetings()
+    loadRecovery()
     loadOptions()
-  }, [loadSessions, loadOptions])
+  }, [loadSessions, loadMeetings, loadRecovery, loadOptions])
 
   const prevDay = useMemo(() => {
     if (!date) return null
@@ -130,6 +208,29 @@ export default function CalendarDayDetail() {
     return d
   }, [date])
 
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [
+      ...sessions.map(
+        (s): TimelineItem => ({
+          kind: 'session',
+          at: new Date(s.scheduledAt).getTime(),
+          session: s,
+        })
+      ),
+      ...meetings.map(
+        (m): TimelineItem => ({
+          kind: 'meeting',
+          at: new Date(m.startsAt).getTime(),
+          meeting: m,
+        })
+      ),
+      ...recovery.map(
+        (v): TimelineItem => ({ kind: 'recovery', at: new Date(v.at).getTime(), visit: v })
+      ),
+    ]
+    return items.sort((a, b) => a.at - b.at)
+  }, [sessions, meetings, recovery])
+
   function handleTap(session: DaySession) {
     setDraft({
       id: session.id,
@@ -142,12 +243,27 @@ export default function CalendarDayDetail() {
     setSheetOpen(true)
   }
 
-  function handleAdd() {
-    if (!date) return
+  /** New items land at 9am on the day being viewed, not "now". */
+  function defaultTime(hour: number): string {
+    if (!date) return new Date().toISOString()
     const at = new Date(date)
-    at.setHours(9, 0, 0, 0)
-    setDraft({ scheduledAt: at.toISOString(), duration: 60 })
+    at.setHours(hour, 0, 0, 0)
+    return at.toISOString()
+  }
+
+  function handleAdd() {
+    setDraft({ scheduledAt: defaultTime(9), duration: 60 })
     setSheetOpen(true)
+  }
+
+  function handleAddMeeting() {
+    setMeetingDraft({ startsAt: defaultTime(9), duration: 60, trainerIds: [] })
+    setMeetingOpen(true)
+  }
+
+  function handleAddRecovery() {
+    setRecoveryDraft({ at: defaultTime(12) })
+    setRecoveryOpen(true)
   }
 
   if (!date) {
@@ -168,11 +284,6 @@ export default function CalendarDayDetail() {
       </div>
     )
   }
-
-  const sorted = [...sessions].sort(
-    (a, b) =>
-      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-  )
 
   return (
     <div className="min-h-screen bg-white">
@@ -222,7 +333,7 @@ export default function CalendarDayDetail() {
           <div className="flex items-center gap-2">
             {prevDay && (
               <Link
-                href={`/admin/calendar/${dateKey(prevDay)}`}
+                href={`/admin/calendar/${dateKey(prevDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Previous day"
               >
@@ -231,7 +342,7 @@ export default function CalendarDayDetail() {
             )}
             {nextDay && (
               <Link
-                href={`/admin/calendar/${dateKey(nextDay)}`}
+                href={`/admin/calendar/${dateKey(nextDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Next day"
               >
@@ -241,27 +352,120 @@ export default function CalendarDayDetail() {
           </div>
         </div>
 
-        {/* Add row */}
+        {/* Add row. Sessions are the everyday act, so they get the solid
+            button; meetings and recovery sit alongside as secondary. */}
         <button
           onClick={handleAdd}
-          className="w-full mb-4 h-12 bg-black text-white rounded-full dsc-headline text-base"
+          className="w-full mb-2 h-12 bg-black text-white rounded-full dsc-headline text-base"
         >
           + Add session
         </button>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <button
+            onClick={handleAddMeeting}
+            className="h-11 rounded-full border border-black/20 text-black/70 hover:bg-black/[0.04] font-semibold text-sm"
+          >
+            + Meeting
+          </button>
+          <button
+            onClick={handleAddRecovery}
+            className="h-11 rounded-full border border-black/20 text-black/70 hover:bg-black/[0.04] font-semibold text-sm"
+          >
+            + Recovery
+          </button>
+        </div>
 
-        {/* Sessions */}
-        {sorted.length === 0 ? (
+        {/* The day */}
+        {timeline.length === 0 ? (
           <div className="rounded-3xl bg-black/[0.04] p-8 text-center">
             <div className="dsc-label text-black/40 mb-1">Empty day</div>
             <p className="text-sm text-black/60">
-              No sessions on the books. Tap{' '}
+              Nothing on the books. Tap{' '}
               <span className="font-semibold text-black">Add session</span> to
               schedule something.
             </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {sorted.map((s) => {
+            {timeline.map((item) => {
+              if (item.kind === 'meeting') {
+                const m = item.meeting
+                const who =
+                  m.trainerIds.length === 0
+                    ? 'All staff'
+                    : m.trainerIds
+                        .map((id) => trainers.find((t) => t.id === id)?.user.name.split(' ')[0])
+                        .filter(Boolean)
+                        .join(', ')
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setMeetingDraft({
+                        id: m.id,
+                        title: m.title,
+                        startsAt: m.startsAt,
+                        duration: m.duration,
+                        trainerIds: m.trainerIds,
+                      })
+                      setMeetingOpen(true)
+                    }}
+                    className="w-full rounded-3xl p-5 flex items-center justify-between gap-4 border border-dashed border-black/25 text-black hover:bg-black/[0.03]"
+                  >
+                    <div className="flex items-baseline gap-4 min-w-0 text-left">
+                      <div className="font-mono text-sm text-black/50 shrink-0 w-16">
+                        {fmtTime(m.startsAt)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{m.title}</div>
+                        <div className="dsc-label text-black/40 mt-0.5">
+                          Meeting · {who} · {m.duration} min
+                        </div>
+                      </div>
+                    </div>
+                    <span className="dsc-label text-black/40 shrink-0">Edit</span>
+                  </button>
+                )
+              }
+
+              if (item.kind === 'recovery') {
+                const v = item.visit
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => {
+                      setRecoveryDraft({
+                        id: v.id,
+                        athleteId: v.athlete.id,
+                        at: v.at,
+                        priceCents: v.priceCents,
+                        note: v.note,
+                      })
+                      setRecoveryOpen(true)
+                    }}
+                    className="w-full rounded-3xl p-5 flex items-center justify-between gap-4 bg-sky-50 text-sky-950 hover:bg-sky-100"
+                  >
+                    <div className="flex items-baseline gap-4 min-w-0 text-left">
+                      <div className="font-mono text-sm opacity-60 shrink-0 w-16">
+                        {fmtTime(v.at)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">
+                          {v.athlete.firstName} {v.athlete.lastName}
+                        </div>
+                        <div className="dsc-label opacity-60 mt-0.5">
+                          Recovery room{v.note ? ` · ${v.note}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="font-mono text-sm shrink-0">
+                      ${(v.priceCents / 100).toFixed(2)}
+                    </span>
+                  </button>
+                )
+              }
+
+              const s = item.session
               const isGroup = (s.attendees?.length ?? 1) > 1
               const displayName = isGroup
                 ? `${s.attendees![0].firstName} +${s.attendees!.length - 1}`
@@ -308,6 +512,27 @@ export default function CalendarDayDetail() {
         onClose={() => setSheetOpen(false)}
         onSaved={() => {
           loadSessions()
+        }}
+      />
+
+      <MeetingSheet
+        open={meetingOpen}
+        initial={meetingDraft}
+        trainers={trainers.map((t) => ({ id: t.id, name: t.user.name }))}
+        onClose={() => setMeetingOpen(false)}
+        onSaved={() => {
+          loadMeetings()
+        }}
+      />
+
+      <RecoverySheet
+        open={recoveryOpen}
+        initial={recoveryDraft}
+        athletes={athletes}
+        defaultPriceCents={defaultPriceCents}
+        onClose={() => setRecoveryOpen(false)}
+        onSaved={() => {
+          loadRecovery()
         }}
       />
     </div>

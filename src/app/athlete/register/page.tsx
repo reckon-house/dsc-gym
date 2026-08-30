@@ -18,6 +18,7 @@ export default function AthleteRegister() {
     lastName: '',
     email: '',
     phone: '',
+    birthdate: '',
     password: '',
     legalName: '',
     agreed: false,
@@ -188,6 +189,18 @@ export default function AthleteRegister() {
                 placeholder="Mobile number"
                 className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
+              {/* Optional. Lets the gym tailor announcements by age group. */}
+              <label className="block">
+                <span className="dsc-label text-white/60 px-6 mb-1.5 block">
+                  Date of birth (optional)
+                </span>
+                <input
+                  type="date"
+                  value={formData.birthdate}
+                  onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
+                  className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                />
+              </label>
               <input
                 type="password"
                 value={formData.password}
