@@ -6,6 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
 import { materializeGroup } from '@/lib/scheduling/engine'
+import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { hashPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -558,6 +559,48 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         weeks: { type: 'number', description: 'Defaults to 8.' },
       },
       required: ['groupId'],
+    },
+  },
+  {
+    name: 'draft_email_blast',
+    description:
+      "Prepare an announcement email to a set of athletes and report who it would reach. This NEVER sends. Always call this first, read the audience and copy back to the owner, and only call send_email_blast if they confirm.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        audience: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['all', 'group', 'age_band'] },
+            groupName: { type: 'string', description: 'For kind=group.' },
+            minAge: { type: 'number', description: 'For kind=age_band, inclusive.' },
+            maxAge: { type: 'number', description: 'For kind=age_band, inclusive.' },
+          },
+          required: ['kind'],
+        },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain text. Blank lines separate paragraphs.' },
+      },
+      required: ['audience', 'subject', 'body'],
+    },
+  },
+  {
+    name: 'send_email_blast',
+    description:
+      'Actually send a drafted blast. Only call after the owner has explicitly confirmed the audience, subject and body you read back to them.',
+    input_schema: {
+      type: 'object',
+      properties: { blastId: { type: 'string' } },
+      required: ['blastId'],
+    },
+  },
+  {
+    name: 'discard_email_blast',
+    description: 'Throw away a drafted blast the owner decided against.',
+    input_schema: {
+      type: 'object',
+      properties: { blastId: { type: 'string' } },
+      required: ['blastId'],
     },
     // cache_control on the LAST tool caches every tool definition up to
     // and including this one. Tools are huge (~5k tokens) and rarely
@@ -1328,6 +1371,67 @@ export async function dispatchTool(
 
     case 'unarchive_athlete': {
       return await unarchiveAthlete(gymId, String(input.athleteId))
+    }
+
+    case 'draft_email_blast': {
+      const a = (input.audience ?? {}) as Record<string, unknown>
+      const kind = String(a.kind ?? '')
+      if (!['all', 'group', 'age_band'].includes(kind)) {
+        return { error: 'audience.kind must be all, group or age_band.' }
+      }
+      const spec =
+        kind === 'group'
+          ? { kind: 'group' as const, groupName: a.groupName ? String(a.groupName) : undefined }
+          : kind === 'age_band'
+            ? {
+                kind: 'age_band' as const,
+                minAge: a.minAge === undefined ? undefined : Number(a.minAge),
+                maxAge: a.maxAge === undefined ? undefined : Number(a.maxAge),
+              }
+            : { kind: 'all' as const }
+
+      const result = await createBlastDraft({
+        gymId,
+        spec,
+        subject: String(input.subject ?? '').trim(),
+        body: String(input.body ?? '').trim(),
+        source: 'ai_chat',
+      })
+      if ('error' in result) return { error: result.error }
+      return {
+        ok: true,
+        blastId: result.blast.id,
+        audience: result.audience.label,
+        recipientCount: result.audience.uniqueEmails,
+        sample: result.audience.recipients.slice(0, 5).map((r) => `${r.firstName} ${r.lastName[0]}.`),
+        excluded: result.audience.excluded,
+        note: 'NOTHING HAS BEEN SENT. Read this back to the owner and wait for an explicit yes before calling send_email_blast.',
+      }
+    }
+
+    case 'send_email_blast': {
+      const blastId = String(input.blastId)
+      const blast = await db.blast.findUnique({ where: { id: blastId } })
+      if (!blast || blast.gymId !== gymId) return { error: 'Blast not found.' }
+      const base =
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        (process.env.VERCEL_PROJECT_PRODUCTION_URL
+          ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+          : 'http://localhost:3000')
+      const result = await sendBlast(blastId, base)
+      if ('error' in result) return { error: result.error }
+      return { ok: true, ...result }
+    }
+
+    case 'discard_email_blast': {
+      const blastId = String(input.blastId)
+      const updated = await db.blast.updateMany({
+        where: { id: blastId, gymId, status: 'draft' },
+        data: { status: 'discarded' },
+      })
+      return updated.count === 1
+        ? { ok: true }
+        : { error: 'That blast is not a draft any more.' }
     }
 
     case 'list_groups': {

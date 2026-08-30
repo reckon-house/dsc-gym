@@ -18,6 +18,8 @@ export interface SendEmailArgs {
   text: string
   html?: string
   attachments?: EmailAttachment[]
+  /** Passed straight to Resend. Used for List-Unsubscribe on blasts. */
+  headers?: Record<string, string>
 }
 
 export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boolean }> {
@@ -31,6 +33,9 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ delivered: boole
         subject: args.subject,
         text: args.text,
         html: args.html,
+      }
+      if (args.headers && Object.keys(args.headers).length > 0) {
+        body.headers = args.headers
       }
       if (args.attachments && args.attachments.length > 0) {
         body.attachments = args.attachments.map((a) => ({
@@ -565,4 +570,62 @@ ${args.dashboardUrl}
   })
 
   return { subject, text, html }
+}
+
+/**
+ * Announcement layout. Plain paragraphs (split on blank lines) rather than one
+ * CTA, plus the unsubscribe footer that promotional mail legally needs.
+ */
+export function buildBlastEmail(args: {
+  subject: string
+  bodyText: string
+  unsubscribeUrl: string
+  /** Null for a shared mailbox — greeting stays generic rather than picking a kid. */
+  greetingName: string | null
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const greeting = args.greetingName ? `Hi ${args.greetingName},` : 'Hi,'
+
+  const text = `${greeting}
+
+${args.bodyText}
+
+— Dallas Sport Collective
+
+Unsubscribe from announcements: ${args.unsubscribeUrl}`
+
+  const paragraphs = args.bodyText
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 16px;font-family:Avenir Next,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#141414;">${escapeHtml(
+          p
+        ).replace(/\n/g, '<br>')}</p>`
+    )
+    .join('')
+
+  const html = `<!doctype html>
+<html><body style="margin:0;padding:0;background:#f4f4f4;">
+<div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(args.subject)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+${
+  args.logoUrl
+    ? `<tr><td align="center" style="padding:28px 32px 8px;"><img src="${escapeAttr(args.logoUrl)}" width="48" height="48" alt="DSC" style="display:block;border:0;"></td></tr>`
+    : ''
+}
+<tr><td style="padding:8px 32px 4px;font-family:'SF Mono',Menlo,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8e8e8e;">Dallas Sport Collective</td></tr>
+<tr><td style="padding:8px 32px 0;font-family:Avenir Next,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#141414;">${escapeHtml(greeting)}</td></tr>
+<tr><td style="padding:16px 32px 8px;">${paragraphs}</td></tr>
+<tr><td style="padding:8px 32px 32px;font-family:'SF Mono',Menlo,monospace;font-size:11px;color:#8e8e8e;">
+<a href="${escapeAttr(args.unsubscribeUrl)}" style="color:#8e8e8e;">Unsubscribe from announcements</a>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`
+
+  return { subject: args.subject, text, html }
 }

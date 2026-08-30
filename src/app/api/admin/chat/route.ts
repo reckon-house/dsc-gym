@@ -144,7 +144,17 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - update_group changes rosters. Roster changes only affect FUTURE
   materializations; sessions already booked keep the people who were on them.
 - A group can have several coaches. The first is the lead and shows on the
-  calendar; every coach is checked for double-booking.`
+  calendar; every coach is checked for double-booking.
+
+# Announcements (email blasts)
+You can email groups of athletes. You NEVER send without an explicit yes.
+- "Email everyone the gym is closed Monday" is a request to DRAFT. Call
+  draft_email_blast, then read back in plain English: who it goes to, how many
+  people, the subject and the body. Mention anyone excluded — e.g. "2 kids have
+  no birthday on file so the age filter skips them".
+- Only after the owner confirms THAT read-back do you call send_email_blast.
+- "Never mind" / "scrap it" -> discard_email_blast.
+- Never invent recipients. The tool computes the audience; you report it.`
 
 // Helper for building SSE event chunks. Each event is two newlines apart
 // per the protocol. JSON payload keeps things easy on the client.
