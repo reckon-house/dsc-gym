@@ -3,6 +3,8 @@
 // Session directly — it calls functions in this module.
 
 import { db } from '@/lib/db'
+import { after } from 'next/server'
+import { notifySessionBooked, notifyStandingSlotMaterialized } from '@/lib/notify'
 import {
   isWithinWindows,
   resolveAvailabilityForDate,
@@ -315,6 +317,7 @@ export async function createGroupSession(
     },
   })
   void rest // primary is also in attendees; rest is just for clarity
+  after(() => notifySessionBooked(session.id))
   return { sessionId: session.id }
 }
 
@@ -505,6 +508,9 @@ export async function commitChange(
       where: { id: proposalId },
       data: { status: 'committed' },
     })
+    // Hooked here rather than in commitAllPending, which loops this function —
+    // hooking both would notify twice per session.
+    after(() => notifySessionBooked(session.id))
     return { ok: true, sessionId: session.id }
   }
 
@@ -695,6 +701,12 @@ export async function materializeStandingSlot(
       },
     })
     created.push({ sessionId: session.id, scheduledAt: scheduledAt.toISOString() })
+  }
+
+  // Deliberately NOT notifySessionBooked per session: materializing 8 weeks
+  // would put 8 near-identical emails in the athlete's inbox. One digest.
+  if (created.length > 0) {
+    after(() => notifyStandingSlotMaterialized(slotId, created))
   }
 
   return { created, skipped }

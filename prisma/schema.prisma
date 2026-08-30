@@ -137,6 +137,11 @@ model Athlete {
   emailVerificationExpiresAt   DateTime?
   waiverSignedAt               DateTime?
   archived                     Boolean   @default(false)
+  // Promotional only. Reminders and booking confirmations are transactional
+  // and ignore this flag; blasts must respect it.
+  emailOptOut                  Boolean   @default(false)
+  // SMS requires explicit opt-in (TCPA), so it defaults to off.
+  smsOptIn                     Boolean   @default(false)
 
   sessions             Session[]
   sessionAttendees     SessionAttendee[]
@@ -409,4 +414,56 @@ model BookingRequest {
   @@index([gymId, status])
   @@index([athleteId])
   @@index([trainerId])
+}
+
+// ---------------------------------------------------------------------------
+// Communications
+// ---------------------------------------------------------------------------
+
+// Idempotency ledger for anything we send. The row is claimed BEFORE the
+// provider is called: if the unique dedupeKey collides we know this message
+// already went out (or is going out) and we skip. That biases to at-most-once,
+// which is the right trade for reminders — a crashed run loses one reminder,
+// it never double-texts an athlete at 6am.
+model NotificationLog {
+  id        String   @id @default(cuid())
+  gymId     String
+  dedupeKey String   @unique
+  type      String // session_reminder | session_booked | standing_materialized | blast
+  channel   String // email | sms
+  sessionId String?
+  athleteId String?
+  trainerId String?
+  blastId   String?
+  recipient String // email address or E.164 number, for audit
+  status    String   @default("pending") // pending | sent | failed | skipped
+  detail    String? // skip reason or provider error
+  createdAt DateTime @default(now())
+
+  @@index([gymId, type, createdAt])
+  @@index([sessionId])
+}
+
+// An announcement to a segment of athletes. Drafted first (audience snapshot
+// + copy), sent only after an explicit confirmation — the same propose/commit
+// shape the scheduler uses, so the AI can never fire one off on its own.
+model Blast {
+  id             String    @id @default(cuid())
+  gymId          String
+  createdById    String?
+  source         String // admin_ui | ai_chat
+  status         String    @default("draft") // draft | sending | sent | failed | discarded
+  channel        String    @default("email")
+  audienceKind   String // all | group | age_band
+  audienceLabel  String
+  audienceJson   String // recipients frozen at draft time
+  subject        String
+  body           String
+  recipientCount Int       @default(0)
+  sentCount      Int       @default(0)
+  failedCount    Int       @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([gymId, createdAt])
 }

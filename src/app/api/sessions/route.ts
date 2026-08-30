@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
+import { notifySessionBooked } from '@/lib/notify'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
@@ -205,6 +207,8 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    after(() => notifySessionBooked(newSession.id))
 
     return NextResponse.json(
       {

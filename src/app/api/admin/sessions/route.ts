@@ -3,6 +3,8 @@
 // validateBooking so rules + conflicts are honored.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
+import { notifySessionBooked } from '@/lib/notify'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
@@ -49,8 +51,16 @@ export async function POST(request: NextRequest) {
       scheduledAt: at,
       duration: dur,
       notes: typeof notes === 'string' ? notes : null,
+      // This route used to create no attendee row at all, unlike
+      // POST /api/sessions. That left admin-made sessions invisible to
+      // anything that reads the roster from SessionAttendee.
+      attendees: { create: [{ athleteId }] },
     },
   })
+
+  // Tell the athlete and the trainer. after() so the response isn't held open
+  // on Resend, and so Vercel doesn't kill the send mid-flight.
+  after(() => notifySessionBooked(created.id))
 
   return NextResponse.json({ success: true, sessionId: created.id })
 }

@@ -410,3 +410,159 @@ function escapeHtml(s: string): string {
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, '&quot;')
 }
+
+// ---------------------------------------------------------------------------
+// Booking + reminder notifications (G1/G2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sent when someone other than the athlete puts a session on the calendar —
+ * the admin panel, the AI scheduler committing a draft, or a group booking.
+ * This is the athlete's first notice of the session, so the caller attaches
+ * the .ics alongside it.
+ *
+ * Trainers get the same email with the roles swapped (`role: 'trainer'`).
+ */
+export function buildSessionBookedEmail(args: {
+  role: 'athlete' | 'trainer'
+  firstName: string
+  /** The other party: trainer name for athletes, athlete name(s) for trainers. */
+  otherPartyName: string
+  whenHuman: string
+  whenDayDate: string
+  whenTimeRange: string
+  durationMinutes: number
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const isAthlete = args.role === 'athlete'
+  const withWhom = isAthlete
+    ? `with ${args.otherPartyName}`
+    : `with ${args.otherPartyName}`
+  const subject = isAthlete
+    ? `You're booked: ${args.whenHuman}`
+    : `New session: ${args.whenHuman} — ${args.otherPartyName}`
+
+  const text = `Hi ${args.firstName},
+
+${isAthlete ? 'A session has been added to your schedule.' : 'A session has been added to your calendar.'}
+
+${args.whenDayDate}
+${args.whenTimeRange} (${args.durationMinutes} min) ${withWhom}
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `${args.whenDayDate}, ${args.whenTimeRange}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: isAthlete ? "You're booked" : 'New session',
+    intro: `Hi ${args.firstName} — ${args.whenDayDate} at ${args.whenTimeRange} (${args.durationMinutes} min) ${withWhom}.`,
+    buttonLabel: isAthlete ? 'View my schedule' : 'View my calendar',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: isAthlete
+      ? 'Need to change it? Reply to this email or talk to your trainer.'
+      : 'Added from the DSC scheduler.',
+  })
+
+  return { subject, text, html }
+}
+
+/**
+ * The 24-hour reminder, sent to athlete and trainer alike.
+ *
+ * Deliberately carries no .ics: the invite went out when the session was
+ * booked, and re-sending a METHOD:PUBLISH invite makes some clients create a
+ * second calendar entry.
+ */
+export function buildSessionReminderEmail(args: {
+  role: 'athlete' | 'trainer'
+  firstName: string
+  otherPartyName: string
+  whenDayDate: string
+  whenTimeRange: string
+  durationMinutes: number
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const isAthlete = args.role === 'athlete'
+  const startTime = args.whenTimeRange.split(' – ')[0] ?? args.whenTimeRange
+  const subject = `Tomorrow at ${startTime}${isAthlete ? '' : ` — ${args.otherPartyName}`}`
+
+  const text = `Hi ${args.firstName},
+
+Reminder — you've got a session tomorrow.
+
+${args.whenDayDate}
+${args.whenTimeRange} (${args.durationMinutes} min) with ${args.otherPartyName}
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `Tomorrow, ${args.whenTimeRange}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'See you tomorrow',
+    intro: `Hi ${args.firstName} — ${args.whenDayDate} at ${args.whenTimeRange} (${args.durationMinutes} min) with ${args.otherPartyName}.`,
+    buttonLabel: isAthlete ? 'View my schedule' : 'View my calendar',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reply to this email if you need to move it.',
+  })
+
+  return { subject, text, html }
+}
+
+/**
+ * One digest when a standing slot materializes, instead of N booking emails
+ * for N weeks of sessions.
+ */
+export function buildStandingSlotDigestEmail(args: {
+  firstName: string
+  trainerName: string
+  slotLabel: string // "Tuesdays at 4:00 PM"
+  count: number
+  throughDate: string // "Oct 24"
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `${args.count} session${args.count === 1 ? '' : 's'} added — ${args.slotLabel}`
+
+  const text = `Hi ${args.firstName},
+
+Your standing slot is booked: ${args.slotLabel} with ${args.trainerName}.
+
+${args.count} session${args.count === 1 ? '' : 's'} added, through ${args.throughDate}.
+
+${args.dashboardUrl}
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `${args.count} sessions added through ${args.throughDate}`,
+    headerLabel: 'Dallas Sport Collective',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: 'Your standing slot is set',
+    intro: `Hi ${args.firstName} — ${args.slotLabel} with ${args.trainerName}. That's ${args.count} session${args.count === 1 ? '' : 's'} on your schedule through ${args.throughDate}.`,
+    buttonLabel: 'View my schedule',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reply to this email if any of these need moving.',
+  })
+
+  return { subject, text, html }
+}
