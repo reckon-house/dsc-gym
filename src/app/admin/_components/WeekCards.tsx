@@ -15,9 +15,31 @@ export interface CardSession {
   attendees?: { id: string; firstName: string; lastName: string }[]
 }
 
+export interface CardMeeting {
+  id: string
+  title: string
+  startsAt: string
+  duration: number
+  /** Empty means all staff. */
+  trainerIds: string[]
+}
+
+/** A session or a meeting, flattened so a day can show one time-ordered list. */
+interface DayItem {
+  id: string
+  at: number
+  time: string
+  label: string
+  aside: string
+  kind: 'session' | 'meeting'
+  cancelled: boolean
+}
+
 interface Props {
   weekStart: Date
   sessions: CardSession[]
+  /** Company-calendar meetings, drawn alongside sessions. */
+  meetings?: CardMeeting[]
   hrefFor: (date: Date) => string // e.g., date => `/admin/calendar/${dateKey(date)}`
   onWeekChange: (start: Date) => void
 }
@@ -49,7 +71,13 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props) {
+export function WeekCards({
+  weekStart,
+  sessions,
+  meetings = [],
+  hrefFor,
+  onWeekChange,
+}: Props) {
   useEffect(() => {
     const aligned = startOfWeek(weekStart)
     if (aligned.getTime() !== weekStart.getTime()) onWeekChange(aligned)
@@ -66,19 +94,40 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
   }, [weekStart])
 
   const byDay = useMemo(() => {
-    const map: Record<string, CardSession[]> = {}
+    const map: Record<string, DayItem[]> = {}
+
     for (const s of sessions) {
-      const key = new Date(s.scheduledAt).toDateString()
-      ;(map[key] ??= []).push(s)
+      const at = new Date(s.scheduledAt)
+      ;(map[at.toDateString()] ??= []).push({
+        id: s.id,
+        at: at.getTime(),
+        time: fmtTime(s.scheduledAt),
+        label:
+          s.attendees && s.attendees.length > 1
+            ? `${s.attendees[0].firstName} +${s.attendees.length - 1}`
+            : s.athleteName,
+        aside: s.trainerName.split(' ')[0],
+        kind: 'session',
+        cancelled: !!s.cancelled,
+      })
     }
-    for (const k of Object.keys(map)) {
-      map[k].sort(
-        (a, b) =>
-          new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-      )
+
+    for (const m of meetings) {
+      const at = new Date(m.startsAt)
+      ;(map[at.toDateString()] ??= []).push({
+        id: m.id,
+        at: at.getTime(),
+        time: fmtTime(m.startsAt),
+        label: m.title,
+        aside: m.trainerIds.length === 0 ? 'All staff' : `${m.trainerIds.length} staff`,
+        kind: 'meeting',
+        cancelled: false,
+      })
     }
+
+    for (const k of Object.keys(map)) map[k].sort((a, b) => a.at - b.at)
     return map
-  }, [sessions])
+  }, [sessions, meetings])
 
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -125,12 +174,16 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
           const key = d.toDateString()
           const list = byDay[key] ?? []
           const isToday = key === todayKey
-          const count = list.length
+          // The headline number counts sessions only — meetings are staff
+          // time, not training, and folding them in would overstate the day.
+          // They get their own line and their own pill style instead.
+          const count = list.filter((i) => i.kind === 'session').length
+          const meetingCount = list.length - count
           // Smaller cards = tighter preview. Today spans full width so it
           // can still show more.
           const previewLimit = isToday ? 3 : 2
           const preview = list.slice(0, previewLimit)
-          const more = Math.max(0, count - preview.length)
+          const more = Math.max(0, list.length - preview.length)
 
           return (
             <Link
@@ -174,33 +227,57 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
                       {count === 1 ? 'session' : 'sessions'}
                     </div>
                   )}
+                  {meetingCount > 0 && (
+                    <div
+                      className={`dsc-label mt-1 ${isToday ? 'text-white/50' : 'text-black/40'}`}
+                    >
+                      +{meetingCount} mtg
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {count > 0 && (
+              {list.length > 0 && (
                 <div className="space-y-1.5">
-                  {preview.map((s) => (
-                    <div
-                      key={s.id}
-                      className={`rounded-2xl px-3 py-1.5 flex items-baseline justify-between gap-2 ${
-                        isToday ? 'bg-white text-black' : 'bg-black text-white'
-                      } ${s.cancelled ? 'opacity-40 line-through' : ''}`}
-                    >
-                      <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="font-mono text-[10px] opacity-75 shrink-0">
-                          {fmtTime(s.scheduledAt)}
-                        </span>
-                        <span className="font-semibold text-xs truncate">
-                          {s.attendees && s.attendees.length > 1
-                            ? `${s.attendees[0].firstName} +${s.attendees.length - 1}`
-                            : s.athleteName}
+                  {preview.map((item) =>
+                    item.kind === 'meeting' ? (
+                      // Outlined rather than filled, so a glance separates
+                      // "staff are busy" from "an athlete is training".
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl px-3 py-1.5 flex items-baseline justify-between gap-2 border border-dashed ${
+                          isToday
+                            ? 'border-white/40 text-white'
+                            : 'border-black/25 text-black/70'
+                        }`}
+                      >
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="font-mono text-[10px] opacity-75 shrink-0">
+                            {item.time}
+                          </span>
+                          <span className="font-semibold text-xs truncate">{item.label}</span>
+                        </div>
+                        <span className="dsc-label opacity-60 shrink-0 text-[10px]">Mtg</span>
+                      </div>
+                    ) : (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl px-3 py-1.5 flex items-baseline justify-between gap-2 ${
+                          isToday ? 'bg-white text-black' : 'bg-black text-white'
+                        } ${item.cancelled ? 'opacity-40 line-through' : ''}`}
+                      >
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="font-mono text-[10px] opacity-75 shrink-0">
+                            {item.time}
+                          </span>
+                          <span className="font-semibold text-xs truncate">{item.label}</span>
+                        </div>
+                        <span className="dsc-label opacity-60 shrink-0 text-[10px]">
+                          {item.aside}
                         </span>
                       </div>
-                      <span className="dsc-label opacity-60 shrink-0 text-[10px]">
-                        {s.trainerName.split(' ')[0]}
-                      </span>
-                    </div>
-                  ))}
+                    )
+                  )}
                   {more > 0 && (
                     <div
                       className={`dsc-label text-center pt-1 ${

@@ -631,6 +631,16 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'cancel_meeting',
+    description:
+      'Take a staff meeting off the company calendar. Use list_meetings first to get the id. The trainers involved are free to be booked again straight away.',
+    input_schema: {
+      type: 'object',
+      properties: { eventId: { type: 'string' } },
+      required: ['eventId'],
+    },
+  },
+  {
     name: 'log_recovery_visit',
     description:
       "Record a recovery-room visit for an athlete so it appears on their monthly charges. Uses the gym's default price unless one is given.",
@@ -1506,6 +1516,15 @@ export async function dispatchTool(
           allStaff: e.trainerIds.length === 0,
         })),
       }
+    }
+
+    case 'cancel_meeting': {
+      const eventId = String(input.eventId ?? '')
+      const ev = await db.calendarEvent.findUnique({ where: { id: eventId } })
+      if (!ev || ev.gymId !== gymId) return { error: 'Meeting not found.' }
+      if (ev.cancelled) return { ok: true, alreadyCancelled: true, title: ev.title }
+      await db.calendarEvent.update({ where: { id: eventId }, data: { cancelled: true } })
+      return { ok: true, title: ev.title, startsAt: ev.startsAt.toISOString() }
     }
 
     case 'log_recovery_visit': {

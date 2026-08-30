@@ -8,6 +8,7 @@ import {
   startOfWeek,
   dateKey,
   type CardSession,
+  type CardMeeting,
 } from '../_components/WeekCards'
 
 interface TrainerOpt {
@@ -19,6 +20,7 @@ export default function CalendarView() {
   const router = useRouter()
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()))
   const [sessions, setSessions] = useState<CardSession[]>([])
+  const [meetings, setMeetings] = useState<CardMeeting[]>([])
   const [trainers, setTrainers] = useState<TrainerOpt[]>([])
   // '' = everyone. The API has supported ?trainerId= all along; this just
   // gives the owner a way to reach it without asking the scheduler.
@@ -72,9 +74,37 @@ export default function CalendarView() {
       })
   }, [router])
 
+  const loadMeetings = useCallback(async (anchor: Date, filterTrainerId: string) => {
+    const start = startOfWeek(anchor)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    const res = await fetch(
+      `/api/admin/calendar-events?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
+    )
+    const data = await res.json()
+    if (!data.success) return
+    const all: CardMeeting[] = data.data.map(
+      (e: { id: string; title: string; startsAt: string; duration: number; trainerIds: string[] }) => ({
+        id: e.id,
+        title: e.title,
+        startsAt: e.startsAt,
+        duration: e.duration,
+        trainerIds: e.trainerIds,
+      })
+    )
+    // An all-staff meeting (empty trainerIds) blocks everyone, so it stays
+    // visible no matter who the filter is narrowed to.
+    setMeetings(
+      filterTrainerId
+        ? all.filter((m) => m.trainerIds.length === 0 || m.trainerIds.includes(filterTrainerId))
+        : all
+    )
+  }, [])
+
   useEffect(() => {
     loadSessions(weekStart, trainerId)
-  }, [weekStart, trainerId, loadSessions])
+    loadMeetings(weekStart, trainerId)
+  }, [weekStart, trainerId, loadSessions, loadMeetings])
 
   return (
     <div className="min-h-screen bg-white">
@@ -98,6 +128,7 @@ export default function CalendarView() {
         <WeekCards
           weekStart={weekStart}
           sessions={sessions}
+          meetings={meetings}
           // Carry the filter into the day view so tapping a day keeps context.
           hrefFor={(d) =>
             `/admin/calendar/${dateKey(d)}${trainerId ? `?trainerId=${trainerId}` : ''}`

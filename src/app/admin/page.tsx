@@ -56,6 +56,15 @@ const CARDS: {
   { href: '/admin/athletes', label: 'Athletes', desc: 'Members & assignments' },
 ]
 
+// Secondary destinations. Kept out of the square-card grid so the four
+// everyday jobs stay the thing you see first — and so an odd count doesn't
+// leave a hole in a two-column layout.
+const LINKS: { href: string; label: string; desc: string }[] = [
+  { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
+  { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
+  { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },
+]
+
 export default function AdminHome() {
   const router = useRouter()
   const [user, setUser] = useState<{ name: string } | null>(null)
@@ -312,6 +321,24 @@ export default function AdminHome() {
               <div className="dsc-headline text-2xl sm:text-3xl md:text-5xl text-black whitespace-pre-line leading-[0.9] break-words">
                 {c.label}
               </div>
+            </Link>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-3xl mx-auto mt-3">
+          {LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="group flex items-center justify-between gap-3 bg-black/[0.04] hover:bg-black/[0.07] rounded-2xl px-4 py-3 transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="dsc-headline text-base text-black truncate">{l.label}</div>
+                <div className="dsc-label text-black/40 group-hover:text-black/60 truncate">
+                  {l.desc}
+                </div>
+              </div>
+              <span className="text-black/30 group-hover:text-black/60 shrink-0">→</span>
             </Link>
           ))}
         </div>

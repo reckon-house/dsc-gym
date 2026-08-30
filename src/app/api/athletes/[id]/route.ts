@@ -153,6 +153,13 @@ export async function PATCH(
       updateData.address = raw === '' ? null : raw
     }
 
+    // Contact consent. emailOptOut only suppresses announcements — reminders
+    // and booking confirmations are transactional and keep sending, or someone
+    // who unsubscribed would stop learning when they train. smsOptIn is
+    // opt-IN: no text goes out until someone actively says yes.
+    if (body.emailOptOut !== undefined) updateData.emailOptOut = Boolean(body.emailOptOut)
+    if (body.smsOptIn !== undefined) updateData.smsOptIn = Boolean(body.smsOptIn)
+
     // Reassignment is an admin action — a trainer must not be able to move an
     // athlete onto (or off) someone else's roster.
     if (body.trainerId !== undefined) {

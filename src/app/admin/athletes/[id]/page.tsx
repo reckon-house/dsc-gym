@@ -20,6 +20,8 @@ interface Athlete {
   birthdate: string | null
   address: string | null
   archived: boolean
+  emailOptOut: boolean
+  smsOptIn: boolean
   emailVerified: boolean
   waiverSignedAt: string | null
   trainerId: string | null
@@ -621,6 +623,33 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean
+  onChange: (on: boolean) => void
+  label: string
+  hint: string
+}) {
+  return (
+    <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 w-4 h-4 accent-black shrink-0"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-black">{label}</span>
+        <span className="block text-xs text-black/50 mt-0.5">{hint}</span>
+      </span>
+    </label>
+  )
+}
+
 function EditAthleteSheet({
   athlete,
   trainers,
@@ -640,6 +669,8 @@ function EditAthleteSheet({
   const [birthdate, setBirthdate] = useState(athlete.birthdate?.slice(0, 10) ?? '')
   const [address, setAddress] = useState(athlete.address ?? '')
   const [trainerId, setTrainerId] = useState(athlete.trainerId ?? '')
+  const [emailOptOut, setEmailOptOut] = useState(athlete.emailOptOut ?? false)
+  const [smsOptIn, setSmsOptIn] = useState(athlete.smsOptIn ?? false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -657,6 +688,8 @@ function EditAthleteSheet({
         birthdate,
         address,
         trainerId: trainerId === '' ? null : trainerId,
+        emailOptOut,
+        smsOptIn,
       }),
     })
     const data = await res.json()
@@ -759,6 +792,24 @@ function EditAthleteSheet({
               className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
             />
           </Field>
+
+          <div>
+            <div className="dsc-label text-black/50 mb-1">Contact</div>
+            <div className="space-y-2">
+              <Toggle
+                checked={smsOptIn}
+                onChange={setSmsOptIn}
+                label="Texts"
+                hint="Reminders by SMS as well as email. Off until they say yes."
+              />
+              <Toggle
+                checked={!emailOptOut}
+                onChange={(on) => setEmailOptOut(!on)}
+                label="Announcements"
+                hint="Gym-wide emails. Reminders and confirmations send either way."
+              />
+            </div>
+          </div>
 
           {error && (
             <div className="rounded-xl bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>
