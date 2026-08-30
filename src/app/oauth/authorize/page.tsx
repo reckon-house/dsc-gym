@@ -94,6 +94,16 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
     where: { id: athleteId },
     select: { firstName: true, lastName: true, email: true, archived: true },
   })
+
+  // A parent may have several kids on this mailbox. Each connector is scoped
+  // to ONE athlete, so they choose here.
+  const family = athlete
+    ? await db.athlete.findMany({
+        where: { email: athlete.email, archived: false },
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    : []
   if (!athlete || athlete.archived) {
     return <ErrorScreen title="Account inactive" body="Your DSC account is inactive. Contact the gym." />
   }
@@ -119,10 +129,44 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
             <div>
               <div className="dsc-label text-black/50 mb-1">Signed in as</div>
               <div className="text-black">
-                {athlete.firstName} {athlete.lastName}
-                <span className="text-black/50"> · {athlete.email}</span>
+                {athlete.email}
               </div>
             </div>
+            {family.length > 1 ? (
+              <div>
+                <div className="dsc-label text-black/50 mb-2">Connect which athlete?</div>
+                <div className="space-y-2">
+                  {family.map((f) => (
+                    <label
+                      key={f.id}
+                      className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="athleteId"
+                        value={f.id}
+                        defaultChecked={f.id === athleteId}
+                        form="grantForm"
+                      />
+                      <span className="text-black">
+                        {f.firstName} {f.lastName}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-black/50 mt-2">
+                  Each connection covers one athlete. To connect another, come
+                  back and add a second connection.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div className="dsc-label text-black/50 mb-1">Athlete</div>
+                <div className="text-black">
+                  {athlete.firstName} {athlete.lastName}
+                </div>
+              </div>
+            )}
             <div>
               <div className="dsc-label text-black/50 mb-1">What this lets it do</div>
               <ul className="text-sm text-black/80 list-disc list-inside space-y-1">
@@ -137,7 +181,7 @@ export default async function AuthorizePage({ searchParams }: PageProps) {
             </div>
           </div>
 
-          <form action="/oauth/authorize/grant" method="POST" className="space-y-2">
+          <form id="grantForm" action="/oauth/authorize/grant" method="POST" className="space-y-2">
             <input type="hidden" name="client_id" value={params.client_id} />
             <input type="hidden" name="redirect_uri" value={params.redirect_uri} />
             <input type="hidden" name="code_challenge" value={params.code_challenge} />

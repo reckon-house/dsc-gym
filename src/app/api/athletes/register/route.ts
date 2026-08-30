@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, verifyPassword } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import {
   buildVerificationEmail,
@@ -78,12 +78,31 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim()
 
-    const existing = await db.athlete.findUnique({ where: { email: normalizedEmail } })
+    // Several kids legitimately share one parent mailbox, so a match here is
+    // usually a parent adding a sibling rather than a duplicate signup.
+    //
+    // The gate is the family password: to attach a new athlete to an existing
+    // mailbox you must already know it. Otherwise anyone who guessed a parent's
+    // email could add themselves into that family and see the kids' schedules.
+    const existing = await db.athlete.findFirst({
+      where: { email: normalizedEmail },
+      orderBy: { createdAt: 'asc' },
+    })
+    let joiningFamily = false
     if (existing) {
-      return NextResponse.json(
-        { success: false, error: 'An account with this email already exists' },
-        { status: 400 }
-      )
+      const knowsFamilyPassword =
+        existing.passwordHash && (await verifyPassword(password, existing.passwordHash))
+      if (!knowsFamilyPassword) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'That email is already registered. To add another athlete to it, use the same password you signed up with.',
+          },
+          { status: 400 }
+        )
+      }
+      joiningFamily = true
     }
 
     const passwordHash = await hashPassword(password)
@@ -101,9 +120,9 @@ export async function POST(request: NextRequest) {
         birthdate: parsedBirthdate,
         passwordHash,
         trainerId: null,
-        emailVerified: false,
-        emailVerificationToken: token,
-        emailVerificationExpiresAt: expiresAt,
+        emailVerified: joiningFamily ? existing!.emailVerified : false,
+        emailVerificationToken: joiningFamily ? null : token,
+        emailVerificationExpiresAt: joiningFamily ? null : expiresAt,
         // The "I have read and agree" checkbox on the registration form is
         // the formal sign event — record it here. (Submission is blocked
         // server-side without legalName, and client-side without the

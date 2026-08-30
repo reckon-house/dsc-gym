@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { markFamilyVerified } from '@/lib/athleteAuth'
 
 // GET /api/athletes/verify?token=...
 // Confirms an athlete's email AND records the formal waiver acknowledgment.
@@ -47,14 +48,10 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  await db.athlete.update({
-    where: { id: athlete.id },
-    data: {
-      emailVerified: true,
-      emailVerificationToken: null,
-      emailVerificationExpiresAt: null,
-    },
-  })
+  // Verifies the whole family: siblings share this mailbox, and the parent
+  // only ever receives (and clicks) one link. Verifying just the row that
+  // carried the token would leave the other kids permanently unable to log in.
+  await markFamilyVerified(athlete.email)
 
   // Note: the waiver was signed at registration. This endpoint only
   // verifies the email — identity confirmation, not the legal sign event.

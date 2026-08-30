@@ -1186,15 +1186,16 @@ export async function dispatchTool(
         providedEmail ||
         `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${Date.now()}@placeholder.com`
 
-      // Check for collision on real email.
+      // A shared email is now a FAMILY, not a collision — a parent adding a
+      // second kid uses the same address on purpose. Report it instead of
+      // refusing, so the model can tell the owner what it's about to do.
+      let joiningFamilyOf: string[] = []
       if (providedEmail) {
-        const existing = await db.athlete.findUnique({ where: { email } })
-        if (existing) {
-          return {
-            error: `An athlete with email ${email} already exists.`,
-            existingAthleteId: existing.id,
-          }
-        }
+        const siblings = await db.athlete.findMany({
+          where: { email, archived: false },
+          select: { firstName: true, lastName: true },
+        })
+        joiningFamilyOf = siblings.map((a) => `${a.firstName} ${a.lastName}`)
       }
 
       const athlete = await db.athlete.create({
@@ -1214,6 +1215,12 @@ export async function dispatchTool(
         name: `${athlete.firstName} ${athlete.lastName}`,
         emailUsed: email,
         wasPlaceholderEmail: !providedEmail,
+        ...(joiningFamilyOf.length
+          ? {
+              joinedFamilyOf: joiningFamilyOf,
+              note: `That email is already used by ${joiningFamilyOf.join(', ')}. They now share one login — mention this to the owner.`,
+            }
+          : {}),
       }
     }
 

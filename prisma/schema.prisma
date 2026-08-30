@@ -121,8 +121,10 @@ model Athlete {
   gymId        String
   firstName    String
   lastName     String
-  email        String   @unique
-  phone        String?  @unique
+  // NOT unique: one parent email (and phone) covers several kids. The set of
+  // athletes sharing a normalized email IS the family — see src/lib/athleteAuth.ts.
+  email        String
+  phone        String?
   passwordHash String?
   address      String?
   // Stored as a date (no time) — an integer age would silently rot, and
@@ -159,6 +161,8 @@ model Athlete {
 
   @@index([gymId])
   @@index([archived])
+  @@index([email])
+  @@index([phone])
 }
 
 model AthleteStandingSlot {

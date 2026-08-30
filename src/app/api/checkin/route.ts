@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     let athlete = null
 
     if (email) {
-      athlete = await db.athlete.findUnique({
+      athlete = await db.athlete.findFirst({
         where: { email: email.toLowerCase() },
         include: {
           trainer: {

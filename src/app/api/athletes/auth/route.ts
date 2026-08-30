@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth'
 import { normalizePhone } from '@/lib/phone'
+import { findLoginGroup } from '@/lib/athleteAuth'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'fallback-secret-change-in-production'
@@ -30,28 +31,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const looksLikeEmail = identifier.includes('@')
-    const lookup = looksLikeEmail
-      ? { email: identifier.toLowerCase().trim() }
-      : (() => {
-          const p = normalizePhone(identifier)
-          return p ? { phone: p } : null
-        })()
+    // A family shares one mailbox, so this returns every kid on it.
+    const family = await findLoginGroup(identifier)
 
-    if (!lookup) {
-      // Bad phone format — same generic error to avoid telling an attacker
-      // whether the address space matters.
-      return NextResponse.json(
-        { success: false, error: 'Invalid email or password' },
-        { status: 401 }
-      )
-    }
-
-    const athlete = await db.athlete.findUnique({ where: lookup })
+    // Credentials are family-wide (see setFamilyPassword), so any row with a
+    // hash can answer the password check. Prefer the oldest.
+    const athlete = family.find((a) => a.passwordHash) ?? null
 
     // Use a generic error so we don't leak which emails exist OR which
     // ones are archived.
-    if (!athlete || !athlete.passwordHash || athlete.archived) {
+    if (!athlete || !athlete.passwordHash) {
       return NextResponse.json(
         { success: false, error: 'Invalid email or password' },
         { status: 401 }
@@ -77,7 +66,10 @@ export async function POST(request: NextRequest) {
 
     const token = await new SignJWT({
       role: 'ATHLETE',
+      // Stays the ACTIVE athlete — every existing consumer of athleteId keeps
+      // working unchanged; the switcher just re-signs with a different one.
       athleteId: athlete.id,
+      athleteIds: family.map((a) => a.id),
       email: athlete.email,
       name: `${athlete.firstName} ${athlete.lastName}`,
     })
@@ -122,6 +114,18 @@ export async function GET() {
   }
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET)
+    // The dashboard renders a kid switcher when this comes back with more
+    // than one. Read from the DB rather than the token so a name change or a
+    // newly added sibling shows up without re-login.
+    const ids = Array.isArray(payload.athleteIds)
+      ? (payload.athleteIds as string[])
+      : [payload.athleteId as string]
+    const family = await db.athlete.findMany({
+      where: { id: { in: ids }, archived: false },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
     return NextResponse.json({
       success: true,
       athlete: {
@@ -129,6 +133,7 @@ export async function GET() {
         name: payload.name,
         email: payload.email,
       },
+      family,
     })
   } catch {
     return NextResponse.json({ success: false }, { status: 401 })

@@ -89,6 +89,9 @@ export default function AthleteDashboard() {
   const [gymOverview, setGymOverview] = useState<GymOverview | null>(null)
   const [trainers, setTrainers] = useState<TrainerProfile[]>([])
   const [connection, setConnection] = useState<ConnectionStatus | null>(null)
+  // More than one entry means this mailbox covers several kids — a parent.
+  const [family, setFamily] = useState<{ id: string; firstName: string; lastName: string }[]>([])
+  const [switching, setSwitching] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function AthleteDashboard() {
         return
       }
       setAthlete(d.athlete)
+      setFamily(Array.isArray(d.family) ? d.family : [])
       const [sRes, rRes, gRes, cRes] = await Promise.all([
         fetch('/api/athletes/me/sessions'),
         fetch('/api/athletes/me/requests'),
@@ -120,6 +124,24 @@ export default function AthleteDashboard() {
       setLoading(false)
     })()
   }, [router])
+
+  // Switching re-signs the session cookie; every /me route reads the active
+  // athlete from that cookie, so a plain reload picks up the new kid.
+  async function handleSwitch(athleteId: string) {
+    setSwitching(true)
+    const res = await fetch('/api/athletes/auth/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ athleteId }),
+    })
+    const data = await res.json()
+    if (!data.success) {
+      alert(data.error ?? 'Could not switch athlete.')
+      setSwitching(false)
+      return
+    }
+    window.location.reload()
+  }
 
   async function handleLogout() {
     await fetch('/api/athletes/auth', { method: 'DELETE' })
@@ -152,6 +174,31 @@ export default function AthleteDashboard() {
           Log out
         </button>
       </header>
+
+      {family.length > 1 && (
+        <div className="px-4 pb-1 max-w-2xl mx-auto w-full">
+          <div className="dsc-label text-black/40 mb-2">Viewing</div>
+          <div className="flex gap-2 flex-wrap">
+            {family.map((f) => {
+              const active = f.id === athlete?.id
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => handleSwitch(f.id)}
+                  disabled={switching || active}
+                  className={`h-9 px-4 rounded-full dsc-headline text-sm transition-colors ${
+                    active
+                      ? 'bg-black text-white'
+                      : 'bg-black/[0.06] text-black/70 hover:bg-black/10 disabled:opacity-40'
+                  }`}
+                >
+                  {f.firstName}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="px-4 py-2 max-w-2xl mx-auto w-full flex-1">
         {/* Hero greeting */}

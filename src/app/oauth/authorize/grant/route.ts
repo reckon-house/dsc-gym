@@ -71,11 +71,15 @@ export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
   const token = cookieStore.get('athleteSession')?.value
   let athleteId: string | null = null
+  let familyIds: string[] = []
   if (token) {
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET)
       if (payload.role === 'ATHLETE' && payload.athleteId) {
         athleteId = payload.athleteId as string
+        familyIds = Array.isArray(payload.athleteIds)
+          ? (payload.athleteIds as string[])
+          : [athleteId]
       }
     } catch {
       /* not logged in */
@@ -86,6 +90,27 @@ export async function POST(request: NextRequest) {
       { error: 'access_denied', error_description: 'Athlete not authenticated.' },
       { status: 401 }
     )
+  }
+
+  // A parent with several kids picks which one this connector sees. The choice
+  // is validated against the family list from the VERIFIED cookie — never
+  // trusted from the form alone, or anyone could mint a token for any athlete.
+  const chosen = form.get('athleteId')
+  if (typeof chosen === 'string' && chosen && chosen !== athleteId) {
+    if (!familyIds.includes(chosen)) {
+      return NextResponse.json(
+        { error: 'access_denied', error_description: 'Not your athlete.' },
+        { status: 403 }
+      )
+    }
+    const target = await db.athlete.findUnique({ where: { id: chosen } })
+    if (!target || target.archived) {
+      return NextResponse.json(
+        { error: 'access_denied', error_description: 'Athlete unavailable.' },
+        { status: 403 }
+      )
+    }
+    athleteId = chosen
   }
 
   // ----- Deny path -----
