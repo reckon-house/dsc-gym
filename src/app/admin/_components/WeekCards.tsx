@@ -5,11 +5,14 @@ import { useEffect, useMemo } from 'react'
 
 export interface CardSession {
   id: string
+  trainerId?: string
   scheduledAt: string
   athleteName: string
   trainerName: string
   duration: number
   cancelled?: boolean
+  // Present for group sessions; the pill shows "First +N" like WeekGrid does.
+  attendees?: { id: string; firstName: string; lastName: string }[]
 }
 
 interface Props {
@@ -188,7 +191,9 @@ export function WeekCards({ weekStart, sessions, hrefFor, onWeekChange }: Props)
                           {fmtTime(s.scheduledAt)}
                         </span>
                         <span className="font-semibold text-xs truncate">
-                          {s.athleteName}
+                          {s.attendees && s.attendees.length > 1
+                            ? `${s.attendees[0].firstName} +${s.attendees.length - 1}`
+                            : s.athleteName}
                         </span>
                       </div>
                       <span className="dsc-label opacity-60 shrink-0 text-[10px]">

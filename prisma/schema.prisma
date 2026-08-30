@@ -122,8 +122,14 @@ model Athlete {
   phone        String?  @unique
   passwordHash String?
   address      String?
+  // Stored as a date (no time) — an integer age would silently rot, and
+  // age-banded email segments recompute from this.
+  birthdate    DateTime? @db.Date
   trainerId    String?
-  trainer      Trainer? @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  // SetNull, NOT Cascade: with Cascade, deleting a Trainer row would silently
+  // delete every athlete assigned to them. archive_trainer already dodges this
+  // by nulling trainerId first, but nothing should depend on that discipline.
+  trainer      Trainer? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
   gym          Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
 
   emailVerified                Boolean   @default(false)

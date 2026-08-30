@@ -16,7 +16,7 @@ import { publicBaseUrl } from '@/lib/oauth/util'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, password, legalName } = body
+    const { firstName, lastName, email, phone, password, legalName, birthdate } = body
 
     if (!firstName || !lastName) {
       return NextResponse.json(
@@ -54,6 +54,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Birthdate is optional. Stored as a DATE at UTC midnight so it can't
+    // drift a day depending on where the server runs. Used for age-banded
+    // announcements; nulls are treated as "unknown", never guessed.
+    let parsedBirthdate: Date | null = null
+    if (birthdate) {
+      const raw = String(birthdate).trim()
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return NextResponse.json(
+          { success: false, error: 'Birthdate must be YYYY-MM-DD.' },
+          { status: 400 }
+        )
+      }
+      const d = new Date(`${raw}T00:00:00.000Z`)
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json(
+          { success: false, error: 'Birthdate is not a real date.' },
+          { status: 400 }
+        )
+      }
+      parsedBirthdate = d
+    }
+
     const normalizedEmail = email.toLowerCase().trim()
 
     const existing = await db.athlete.findUnique({ where: { email: normalizedEmail } })
@@ -76,6 +98,7 @@ export async function POST(request: NextRequest) {
         lastName: lastName.trim(),
         email: normalizedEmail,
         phone: normalizedPhone,
+        birthdate: parsedBirthdate,
         passwordHash,
         trainerId: null,
         emailVerified: false,

@@ -4,6 +4,7 @@
 
 import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
 import { hashPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -1235,54 +1236,12 @@ export async function dispatchTool(
     }
 
     case 'archive_athlete': {
-      const athleteId = String(input.athleteId)
-      const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
-      if (!athlete || athlete.gymId !== gymId) {
-        return { error: 'Athlete not found.' }
-      }
-
-      const cancelFuture = input.cancelFutureSessions !== false
-      let cancelled = 0
-
-      await db.athlete.update({ where: { id: athleteId }, data: { archived: true } })
-
-      if (cancelFuture) {
-        // Cancel sessions where they're the primary OR an attendee.
-        const futureWhere = {
-          cancelled: false,
-          scheduledAt: { gte: new Date() },
-          OR: [
-            { athleteId },
-            { attendees: { some: { athleteId } } },
-          ],
-        }
-        const sessions = await db.session.findMany({
-          where: futureWhere,
-          include: { attendees: true },
-        })
-        for (const s of sessions) {
-          // If group session and this is just one of many, drop them from
-          // attendees rather than cancelling the whole group.
-          const otherAttendees = s.attendees.filter((a) => a.athleteId !== athleteId)
-          if (otherAttendees.length > 0 && s.athleteId !== athleteId) {
-            await db.sessionAttendee.deleteMany({
-              where: { sessionId: s.id, athleteId },
-            })
-          } else {
-            await db.session.update({
-              where: { id: s.id },
-              data: { cancelled: true },
-            })
-            cancelled++
-          }
-        }
-      }
-
-      return {
-        ok: true,
-        athleteName: `${athlete.firstName} ${athlete.lastName}`,
-        sessionsCancelled: cancelled,
-      }
+      // Shared with the admin UI (POST /api/athletes/[id]/archive) so the two
+      // surfaces can't drift — see src/lib/athletes.ts.
+      const result = await archiveAthlete(gymId, String(input.athleteId), {
+        cancelFutureSessions: input.cancelFutureSessions !== false,
+      })
+      return result
     }
 
     case 'unarchive_trainer': {
@@ -1296,13 +1255,7 @@ export async function dispatchTool(
     }
 
     case 'unarchive_athlete': {
-      const athleteId = String(input.athleteId)
-      const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
-      if (!athlete || athlete.gymId !== gymId) {
-        return { error: 'Athlete not found.' }
-      }
-      await db.athlete.update({ where: { id: athleteId }, data: { archived: false } })
-      return { ok: true }
+      return await unarchiveAthlete(gymId, String(input.athleteId))
     }
 
     case 'set_athlete_standing_slot': {

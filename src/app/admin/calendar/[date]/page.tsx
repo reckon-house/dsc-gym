@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
@@ -58,6 +58,10 @@ function dateKey(d: Date): string {
 export default function CalendarDayDetail() {
   const router = useRouter()
   const params = useParams<{ date: string }>()
+  const searchParams = useSearchParams()
+  // Carried over from the week view's trainer filter, so drilling into a day
+  // doesn't silently widen the view back to everyone.
+  const filterTrainerId = searchParams.get('trainerId') ?? ''
   const date = parseDateKey(params.date)
   const [sessions, setSessions] = useState<DaySession[]>([])
   const [trainers, setTrainers] = useState<TrainerOpt[]>([])
@@ -71,12 +75,15 @@ export default function CalendarDayDetail() {
     start.setHours(0, 0, 0, 0)
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
-    const res = await fetch(
-      `/api/sessions?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-    )
+    const qs = new URLSearchParams({
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    })
+    if (filterTrainerId) qs.set('trainerId', filterTrainerId)
+    const res = await fetch(`/api/sessions?${qs.toString()}`)
     const data = await res.json()
     if (data.success) setSessions(data.data)
-  }, [date])
+  }, [date, filterTrainerId])
 
   const loadOptions = useCallback(async () => {
     const [t, a] = await Promise.all([
@@ -222,7 +229,7 @@ export default function CalendarDayDetail() {
           <div className="flex items-center gap-2">
             {prevDay && (
               <Link
-                href={`/admin/calendar/${dateKey(prevDay)}`}
+                href={`/admin/calendar/${dateKey(prevDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Previous day"
               >
@@ -231,7 +238,7 @@ export default function CalendarDayDetail() {
             )}
             {nextDay && (
               <Link
-                href={`/admin/calendar/${dateKey(nextDay)}`}
+                href={`/admin/calendar/${dateKey(nextDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Next day"
               >
