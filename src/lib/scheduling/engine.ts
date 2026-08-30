@@ -189,6 +189,34 @@ export async function validateBooking(
     }
   }
 
+  // 4b. Staff meetings block the trainers they involve. Meetings live in
+  // CalendarEvent, not Session, so the double-booking scan above can't see
+  // them — without this a trainer could be booked into an all-staff meeting.
+  const meetings = await db.calendarEvent.findMany({
+    where: {
+      gymId,
+      cancelled: false,
+      startsAt: { gte: dayStart, lt: dayEnd },
+    },
+  })
+  for (const m of meetings) {
+    // Empty trainerIds means all staff.
+    const involvesTrainer =
+      m.trainerIds.length === 0 || m.trainerIds.includes(input.trainerId)
+    if (!involvesTrainer) continue
+    const mStart = m.startsAt.getTime()
+    const mEnd = mStart + m.duration * 60_000
+    if (start.getTime() < mEnd && end.getTime() > mStart) {
+      const window = `${formatTime(new Date(mStart), zone)} – ${formatTime(new Date(mEnd), zone)}`
+      conflicts.push({
+        kind: 'MEETING_CONFLICT',
+        message: `${trainer.user.name} is in "${m.title}" ${window}.`,
+        publicMessage: `${trainer.user.name} is unavailable ${window}.`,
+        details: { conflictingSessionId: m.id },
+      })
+    }
+  }
+
   // 5. Same-trainer-same-day rule (if disabled).
   if (
     !config.allowSameTrainerSameDay &&

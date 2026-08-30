@@ -602,6 +602,65 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
       properties: { blastId: { type: 'string' } },
       required: ['blastId'],
     },
+  },
+  {
+    name: 'create_meeting',
+    description:
+      "Put a staff meeting on the company calendar (not a training session). Blocks the trainers involved from being booked at that time. Leave trainerIds empty for an all-staff meeting.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        dateISO: { type: 'string', description: 'ISO datetime WITH timezone offset.' },
+        duration: { type: 'number', description: 'Minutes. Defaults to 60.' },
+        trainerIds: { type: 'array', items: { type: 'string' } },
+        description: { type: 'string' },
+      },
+      required: ['title', 'dateISO'],
+    },
+  },
+  {
+    name: 'list_meetings',
+    description: 'Staff meetings on the company calendar in a date range.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        startDateISO: { type: 'string' },
+        endDateISO: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'log_recovery_visit',
+    description:
+      "Record a recovery-room visit for an athlete so it appears on their monthly charges. Uses the gym's default price unless one is given.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        athleteId: { type: 'string' },
+        priceCents: { type: 'number' },
+        note: { type: 'string' },
+        dateISO: { type: 'string' },
+      },
+      required: ['athleteId'],
+    },
+  },
+  {
+    name: 'list_recovery_charges',
+    description: 'Recovery-room totals per athlete for a month (YYYY-MM). Defaults to this month.',
+    input_schema: {
+      type: 'object',
+      properties: { month: { type: 'string', description: '"YYYY-MM"' } },
+    },
+  },
+  {
+    name: 'list_extra_checkins',
+    description:
+      "Athletes who checked in without a scheduled session — i.e. coming more often than they're booked. Note: a check-in only matches the FIRST session that day, so an athlete with two sessions in one day can show a false extra.",
+    input_schema: {
+      type: 'object',
+      properties: { sinceDays: { type: 'number', description: 'Defaults to 30.' } },
+    },
     // cache_control on the LAST tool caches every tool definition up to
     // and including this one. Tools are huge (~5k tokens) and rarely
     // change, so caching them is the biggest single cost win.
@@ -1378,6 +1437,157 @@ export async function dispatchTool(
 
     case 'unarchive_athlete': {
       return await unarchiveAthlete(gymId, String(input.athleteId))
+    }
+
+    case 'create_meeting': {
+      const title = String(input.title ?? '').trim()
+      if (!title) return { error: 'Meeting needs a title.' }
+      const startsAt = new Date(String(input.dateISO))
+      if (Number.isNaN(startsAt.getTime())) return { error: 'dateISO is not a valid datetime.' }
+      const duration = Number(input.duration ?? 60)
+      const trainerIds = Array.isArray(input.trainerIds)
+        ? (input.trainerIds as string[]).map(String)
+        : []
+
+      const end = new Date(startsAt.getTime() + duration * 60_000)
+      const clash = await db.session.findMany({
+        where: {
+          gymId,
+          cancelled: false,
+          scheduledAt: { gte: new Date(startsAt.getTime() - 12 * 3600_000), lt: end },
+          ...(trainerIds.length ? { trainerId: { in: trainerIds } } : {}),
+        },
+        include: { trainer: { include: { user: true } }, athlete: true },
+      })
+      const warnings = clash
+        .filter((c) => {
+          const cEnd = new Date(c.scheduledAt.getTime() + c.duration * 60_000)
+          return c.scheduledAt < end && cEnd > startsAt
+        })
+        .map((c) => `${c.trainer.user.name} has ${c.athlete.firstName} ${c.athlete.lastName} then`)
+
+      const ev = await db.calendarEvent.create({
+        data: { gymId, title, startsAt, duration, trainerIds,
+          description: input.description ? String(input.description) : null },
+      })
+      return {
+        ok: true,
+        eventId: ev.id,
+        title,
+        allStaff: trainerIds.length === 0,
+        // Reported, not blocked — the owner usually means to move training.
+        warnings,
+      }
+    }
+
+    case 'list_meetings': {
+      const events = await db.calendarEvent.findMany({
+        where: {
+          gymId,
+          cancelled: false,
+          ...(input.startDateISO && input.endDateISO
+            ? {
+                startsAt: {
+                  gte: new Date(String(input.startDateISO)),
+                  lt: new Date(String(input.endDateISO)),
+                },
+              }
+            : {}),
+        },
+        orderBy: { startsAt: 'asc' },
+        take: 50,
+      })
+      return {
+        meetings: events.map((e) => ({
+          id: e.id,
+          title: e.title,
+          startsAt: e.startsAt.toISOString(),
+          duration: e.duration,
+          allStaff: e.trainerIds.length === 0,
+        })),
+      }
+    }
+
+    case 'log_recovery_visit': {
+      const athleteId = String(input.athleteId)
+      const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
+      if (!athlete || athlete.gymId !== gymId) return { error: 'Athlete not found.' }
+      const config = await db.gymConfig.findUnique({ where: { gymId } })
+      const priceCents =
+        input.priceCents !== undefined
+          ? Number(input.priceCents)
+          : (config?.recoveryPriceCents ?? 2500)
+      const visit = await db.recoveryVisit.create({
+        data: {
+          gymId,
+          athleteId,
+          at: input.dateISO ? new Date(String(input.dateISO)) : new Date(),
+          priceCents,
+          note: input.note ? String(input.note) : null,
+          createdBy: 'chat',
+        },
+      })
+      return {
+        ok: true,
+        visitId: visit.id,
+        athlete: `${athlete.firstName} ${athlete.lastName}`,
+        price: `$${(priceCents / 100).toFixed(2)}`,
+      }
+    }
+
+    case 'list_recovery_charges': {
+      const month = String(input.month ?? new Date().toISOString().slice(0, 7))
+      const [y, m] = month.split('-').map(Number)
+      if (!y || !m) return { error: 'month must be "YYYY-MM".' }
+      const from = new Date(Date.UTC(y, m - 1, 1))
+      const to = new Date(Date.UTC(y, m, 1))
+      const visits = await db.recoveryVisit.findMany({
+        where: { gymId, at: { gte: from, lt: to } },
+        include: { athlete: { select: { firstName: true, lastName: true } } },
+      })
+      const totals = new Map<string, { name: string; visits: number; cents: number }>()
+      for (const v of visits) {
+        const name = `${v.athlete.firstName} ${v.athlete.lastName}`
+        const row = totals.get(name) ?? { name, visits: 0, cents: 0 }
+        row.visits++
+        row.cents += v.priceCents
+        totals.set(name, row)
+      }
+      return {
+        month,
+        totalCharged: `$${(visits.reduce((n, v) => n + v.priceCents, 0) / 100).toFixed(2)}`,
+        perAthlete: [...totals.values()]
+          .sort((a, b) => b.cents - a.cents)
+          .map((r) => ({ name: r.name, visits: r.visits, total: `$${(r.cents / 100).toFixed(2)}` })),
+      }
+    }
+
+    case 'list_extra_checkins': {
+      const days = Math.min(Math.max(Number(input.sinceDays ?? 30), 1), 365)
+      const since = new Date(Date.now() - days * 86400_000)
+      const grouped = await db.checkIn.groupBy({
+        by: ['athleteId'],
+        where: { gymId, matched: false, checkInTime: { gte: since } },
+        _count: { _all: true },
+      })
+      const ids = grouped.map((g) => g.athleteId).filter((x): x is string => !!x)
+      const athletes = await db.athlete.findMany({
+        where: { id: { in: ids }, archived: false },
+        select: { id: true, firstName: true, lastName: true },
+      })
+      const byId = new Map(athletes.map((a) => [a.id, a]))
+      return {
+        sinceDays: days,
+        athletes: grouped
+          .filter((g) => g.athleteId && byId.has(g.athleteId))
+          .map((g) => ({
+            name: `${byId.get(g.athleteId!)!.firstName} ${byId.get(g.athleteId!)!.lastName}`,
+            extraVisits: g._count._all,
+          }))
+          .sort((a, b) => b.extraVisits - a.extraVisits),
+        caveat:
+          'A check-in only matches the first session that day, so someone with two sessions in one day can appear here incorrectly.',
+      }
     }
 
     case 'draft_email_blast': {

@@ -35,6 +35,8 @@ model Gym {
   draftSchedules   DraftSchedule[]
   bookingRequests  BookingRequest[]
   groups           Group[]
+  calendarEvents   CalendarEvent[]
+  recoveryVisits   RecoveryVisit[]
 }
 
 model GymConfig {
@@ -48,6 +50,9 @@ model GymConfig {
   cancellationPolicyHours Int      @default(24)
   noShowPolicy            String   @default("flag_only")
   defaultSessionMinutes   Int      @default(60)
+  // Recovery room is billed outside the app; this is the default line price
+  // used when logging a visit. Cents, so no floating-point money.
+  recoveryPriceCents      Int      @default(2500)
   updatedAt               DateTime @updatedAt
 }
 
@@ -157,6 +162,7 @@ model Athlete {
   oauthRefreshTokens   OAuthRefreshToken[]
   bookingRequests      BookingRequest[]
   groupMemberships     GroupMember[]
+  recoveryVisits       RecoveryVisit[]
   createdAt            DateTime  @default(now())
 
   @@index([gymId])
@@ -558,4 +564,51 @@ model SessionCoach {
 
   @@unique([sessionId, trainerId])
   @@index([trainerId])
+}
+
+// ---------------------------------------------------------------------------
+// Company calendar — staff meetings, not training
+// ---------------------------------------------------------------------------
+
+// Deliberately NOT a Session. Session.athleteId is required and read by the
+// engine, check-in, the floor cap and the athlete-facing MCP tools; making it
+// optional to fit meetings would leak meetings into athlete feeds and force
+// null-guards through all of that.
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  gymId       String
+  gym         Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  startsAt    DateTime
+  duration    Int      @default(60)
+  kind        String   @default("meeting")
+  /// Empty means all staff.
+  trainerIds  String[] @default([])
+  createdBy   String?
+  cancelled   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([gymId, startsAt])
+}
+
+// ---------------------------------------------------------------------------
+// Recovery room — usage log, billed outside the app
+// ---------------------------------------------------------------------------
+
+model RecoveryVisit {
+  id         String   @id @default(cuid())
+  gymId      String
+  gym        Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  athleteId  String
+  athlete    Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  at         DateTime @default(now())
+  priceCents Int
+  note       String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@index([gymId, at])
+  @@index([athleteId, at])
 }
