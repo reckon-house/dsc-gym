@@ -499,3 +499,81 @@ export async function sendDueReminders(now: Date = new Date()): Promise<Reminder
   report.skippedBadEmail = [...new Set(report.skippedBadEmail)]
   return report
 }
+
+/**
+ * One digest per athlete when a group's weeks are materialized, rather than
+ * one booking email per session per athlete.
+ */
+export async function notifyGroupMaterialized(
+  groupId: string,
+  created: { sessionId: string; scheduledAt: Date | string }[]
+): Promise<void> {
+  try {
+    if (created.length === 0) return
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+      include: {
+        members: { include: { athlete: true } },
+        coaches: { include: { trainer: { include: { user: true } } } },
+      },
+    })
+    if (!group) return
+
+    const zone = await getGymTimezone(group.gymId)
+    const dates = created
+      .map((c) => new Date(c.scheduledAt))
+      .sort((a, b) => a.getTime() - b.getTime())
+    const last = dates[dates.length - 1]
+
+    const lead = group.coaches.find((c) => c.isLead) ?? group.coaches[0]
+    const coachNames = group.coaches.map((c) => c.trainer.user.name).join(' & ')
+
+    const dayNames = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays']
+    const startMinute = group.startMinute ?? 0
+    const h = Math.floor(startMinute / 60)
+    const m = startMinute % 60
+    const period = h < 12 ? 'AM' : 'PM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    const slotLabel = `${group.name} — ${dayNames[group.dayOfWeek ?? 0]} at ${h12}:${String(m).padStart(2, '0')} ${period}`
+
+    const seen = new Set<string>()
+    for (const member of group.members) {
+      const athlete = member.athlete
+      if (athlete.archived) continue
+      const email = athlete.email?.toLowerCase().trim()
+      if (!isDeliverableEmail(email)) continue
+      if (seen.has(email!)) continue
+      seen.add(email!)
+
+      const logId = await claim({
+        gymId: group.gymId,
+        dedupeKey: `group:${groupId}:${last.toISOString().slice(0, 10)}:${email}`,
+        type: 'standing_materialized',
+        channel: 'email',
+        recipient: email!,
+        athleteId: athlete.id,
+      })
+      if (!logId) continue
+
+      const tpl = buildStandingSlotDigestEmail({
+        firstName: athlete.firstName,
+        trainerName: coachNames || lead?.trainer.user.name || 'your coaches',
+        slotLabel,
+        count: created.length,
+        throughDate: formatInZone(last, zone, { month: 'short', day: 'numeric' }),
+        dashboardUrl: `${baseUrl()}/athlete/dashboard`,
+        logoUrl: process.env.EMAIL_LOGO_URL,
+        heroImageUrl: process.env.EMAIL_HERO_URL,
+      })
+      const { delivered } = await sendEmail({
+        to: email!,
+        subject: tpl.subject,
+        text: tpl.text,
+        html: tpl.html,
+      })
+      await settle(logId, delivered ? 'sent' : 'failed')
+    }
+  } catch (err) {
+    console.error('[notify] notifyGroupMaterialized failed for', groupId, err)
+  }
+}

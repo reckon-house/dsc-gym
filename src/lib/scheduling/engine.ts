@@ -4,7 +4,7 @@
 
 import { db } from '@/lib/db'
 import { after } from 'next/server'
-import { notifySessionBooked, notifyStandingSlotMaterialized } from '@/lib/notify'
+import { notifySessionBooked, notifyStandingSlotMaterialized, notifyGroupMaterialized } from '@/lib/notify'
 import {
   isWithinWindows,
   resolveAvailabilityForDate,
@@ -148,7 +148,13 @@ export async function validateBooking(
 
   const sameDaySessions = await db.session.findMany({
     where: {
-      trainerId: input.trainerId,
+      // A trainer is busy whether they're the lead (trainerId) or an assisting
+      // coach on a group session — otherwise a second coach could be booked
+      // into two places at once.
+      OR: [
+        { trainerId: input.trainerId },
+        { coaches: { some: { trainerId: input.trainerId } } },
+      ],
       cancelled: false,
       scheduledAt: { gte: dayStart, lt: dayEnd },
       NOT: ignoreSessionId ? { id: ignoreSessionId } : undefined,
@@ -235,18 +241,23 @@ export async function validateGroupBooking(
       conflicts: [{ kind: 'UNKNOWN_ATHLETE', message: 'No attendees specified.' }],
     }
   }
-  // Run a one-on-one validate for the slot itself using the first athlete.
-  const slotCheck = await validateBooking(
-    gymId,
-    {
-      trainerId: input.trainerId,
-      athleteId: input.athleteIds[0],
-      scheduledAt: input.scheduledAt,
-      duration: input.duration,
-    },
-    ignoreSessionId
-  )
-  const conflicts: Conflict[] = [...slotCheck.conflicts]
+  // Validate the slot once per coach. Previously only the lead was checked,
+  // so a second coach could be silently double-booked.
+  const coachIds = input.coachIds?.length ? input.coachIds : [input.trainerId]
+  const conflicts: Conflict[] = []
+  for (const coachId of coachIds) {
+    const slotCheck = await validateBooking(
+      gymId,
+      {
+        trainerId: coachId,
+        athleteId: input.athleteIds[0],
+        scheduledAt: input.scheduledAt,
+        duration: input.duration,
+      },
+      ignoreSessionId
+    )
+    conflicts.push(...slotCheck.conflicts)
+  }
 
   // Now check each ADDITIONAL athlete: do they have a different session
   // (with someone else) at this same time? That would be a real conflict.
@@ -282,7 +293,10 @@ export async function validateGroupBooking(
       if (s.scheduledAt < end && sEnd > start) {
         // If it's the SAME trainer + slot, that's the group itself (or a
         // session we're modifying) — not a real conflict.
-        if (s.trainerId === input.trainerId && s.scheduledAt.getTime() === start.getTime()) {
+        if (
+          coachIds.includes(s.trainerId) &&
+          s.scheduledAt.getTime() === start.getTime()
+        ) {
           continue
         }
         conflicts.push({
@@ -301,23 +315,37 @@ export async function validateGroupBooking(
 // first attendee (backwards compat); attendees join carries the full list.
 export async function createGroupSession(
   gymId: string,
-  input: GroupBookingInput
+  input: GroupBookingInput,
+  // Bulk callers (materializeGroup) suppress the per-session email and send a
+  // single digest instead — 8 weeks of booking emails is not a notification,
+  // it's a mailbox flood.
+  opts: { notify?: boolean } = {}
 ): Promise<{ sessionId: string }> {
   const [primary, ...rest] = input.athleteIds
+  // trainerId stays the lead coach so every single-trainer query keeps working;
+  // SessionCoach carries the full roster including that lead.
+  const coachIds = input.coachIds?.length ? input.coachIds : [input.trainerId]
   const session = await db.session.create({
     data: {
       gymId,
-      trainerId: input.trainerId,
+      trainerId: coachIds[0],
       athleteId: primary,
       scheduledAt: input.scheduledAt,
       duration: input.duration,
+      groupId: input.groupId ?? null,
+      notes: input.notes ?? null,
       attendees: {
         create: input.athleteIds.map((id) => ({ athleteId: id })),
+      },
+      coaches: {
+        create: coachIds.map((id) => ({ trainerId: id })),
       },
     },
   })
   void rest // primary is also in attendees; rest is just for clarity
-  after(() => notifySessionBooked(session.id))
+  if (opts.notify !== false) {
+    after(() => notifySessionBooked(session.id))
+  }
   return { sessionId: session.id }
 }
 
@@ -466,17 +494,26 @@ export async function commitChange(
   }
 
   if (p.action === 'create' && p.trainerId && p.athleteId && p.scheduledAt) {
-    // Group proposals stash the attendee list in notes as "Group of N: id1,id2,id3".
-    const groupMatch = p.notes?.match(/^Group of \d+:\s*(.+)$/)
-    const athleteIds = groupMatch
-      ? groupMatch[1].split(',').map((s) => s.trim()).filter(Boolean)
-      : [p.athleteId]
+    // Rosters now live in real columns. The notes-string form ("Group of N:
+    // id1,id2") is only read as a fallback so drafts proposed before this
+    // release still commit correctly; nothing writes it any more, and this
+    // branch can be deleted once no stale drafts remain.
+    const legacyMatch = p.attendeeIds.length === 0
+      ? p.notes?.match(/^Group of \d+:\s*(.+)$/)
+      : null
+    const athleteIds = p.attendeeIds.length
+      ? p.attendeeIds
+      : legacyMatch
+        ? legacyMatch[1].split(',').map((s) => s.trim()).filter(Boolean)
+        : [p.athleteId]
+    const coachIds = p.coachIds.length ? p.coachIds : [p.trainerId]
 
     const validation =
-      athleteIds.length > 1
+      athleteIds.length > 1 || coachIds.length > 1
         ? await validateGroupBooking(gymId, {
             trainerId: p.trainerId,
             athleteIds,
+            coachIds,
             scheduledAt: p.scheduledAt,
             duration: p.duration,
           })
@@ -496,12 +533,14 @@ export async function commitChange(
     const session = await db.session.create({
       data: {
         gymId,
-        trainerId: p.trainerId,
+        trainerId: coachIds[0],
         athleteId: p.athleteId,
         scheduledAt: p.scheduledAt,
         duration: p.duration,
-        notes: groupMatch ? null : p.notes,
+        groupId: p.groupId,
+        notes: legacyMatch ? null : p.notes,
         attendees: { create: athleteIds.map((id) => ({ athleteId: id })) },
+        coaches: { create: coachIds.map((id) => ({ trainerId: id })) },
       },
     })
     await db.proposedBooking.update({
@@ -713,3 +752,127 @@ export async function materializeStandingSlot(
 }
 
 export { DEFAULT_GYM_ID }
+
+// ---------------- Groups ----------------
+//
+// A Group is a named, persistent cohort — "the basketball group, Mondays at
+// 11am, these kids, these coaches". Same shape as a standing slot but for many
+// athletes and many coaches, and it survives as a thing you can name, edit and
+// email. Materializing walks the same DST-safe day arithmetic.
+//
+// Roster is snapshotted at materialize time: changing membership later affects
+// future materializations, not sessions already on the calendar. That matches
+// how standing slots behave and keeps history honest.
+
+export async function materializeGroup(
+  groupId: string,
+  weeksAhead: number
+): Promise<MaterializeResult> {
+  const group = await db.group.findUnique({
+    where: { id: groupId },
+    include: {
+      members: { include: { athlete: { select: { id: true, archived: true } } } },
+      coaches: true,
+    },
+  })
+  if (!group) {
+    return { created: [], skipped: [{ date: 'n/a', reason: 'Group not found' }] }
+  }
+  if (!group.active) {
+    return { created: [], skipped: [{ date: 'n/a', reason: 'Group is paused' }] }
+  }
+  if (group.dayOfWeek === null || group.startMinute === null) {
+    return {
+      created: [],
+      skipped: [{ date: 'n/a', reason: 'Group has no weekly time set' }],
+    }
+  }
+
+  // Archived athletes stay on the roster but are not booked.
+  const athleteIds = group.members
+    .filter((m) => !m.athlete.archived)
+    .map((m) => m.athleteId)
+  if (athleteIds.length === 0) {
+    return { created: [], skipped: [{ date: 'n/a', reason: 'Group has no active members' }] }
+  }
+
+  // Lead first — it becomes Session.trainerId.
+  const sortedCoaches = [...group.coaches].sort(
+    (a, b) => Number(b.isLead) - Number(a.isLead)
+  )
+  const coachIds = sortedCoaches.map((c) => c.trainerId)
+  if (coachIds.length === 0) {
+    return { created: [], skipped: [{ date: 'n/a', reason: 'Group has no coaches' }] }
+  }
+
+  const gymId = group.gymId
+  const config = await loadConfig(gymId)
+  const zone = config.timezone
+
+  const created: MaterializeResult['created'] = []
+  const skipped: MaterializeResult['skipped'] = []
+
+  const today = startOfDayInZone(new Date(), zone)
+  const todayDow = partsInZone(today, zone).weekday
+  const daysAhead = (group.dayOfWeek - todayDow + 7) % 7
+
+  for (let week = 0; week < weeksAhead; week++) {
+    // Re-derive the day start each iteration so a DST boundary inside the
+    // range doesn't shift the local time of later sessions.
+    const reference = new Date(today.getTime() + (daysAhead + week * 7) * 86400_000)
+    const dayStart = startOfDayInZone(reference, zone)
+    const scheduledAt = new Date(dayStart.getTime() + group.startMinute * 60_000)
+    const p = partsInZone(dayStart, zone)
+    const ymd = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
+
+    if (scheduledAt.getTime() < Date.now() - 60_000) {
+      skipped.push({ date: ymd, reason: 'Already in the past.' })
+      continue
+    }
+
+    // Idempotent: re-running never doubles a week.
+    const existing = await db.session.findFirst({
+      where: { groupId, scheduledAt, cancelled: false },
+    })
+    if (existing) {
+      skipped.push({ date: ymd, reason: 'Already booked.' })
+      continue
+    }
+
+    const validation = await validateGroupBooking(gymId, {
+      trainerId: coachIds[0],
+      athleteIds,
+      coachIds,
+      scheduledAt,
+      duration: group.duration,
+    })
+    if (!validation.ok) {
+      skipped.push({
+        date: ymd,
+        reason: validation.conflicts[0]?.message ?? 'Conflict',
+      })
+      continue
+    }
+
+    const { sessionId } = await createGroupSession(
+      gymId,
+      {
+        trainerId: coachIds[0],
+        athleteIds,
+        coachIds,
+        scheduledAt,
+        duration: group.duration,
+        groupId,
+        notes: group.notes ? `${group.name}: ${group.notes}` : group.name,
+      },
+      { notify: false }
+    )
+    created.push({ sessionId, scheduledAt: scheduledAt.toISOString() })
+  }
+
+  if (created.length > 0) {
+    after(() => notifyGroupMaterialized(groupId, created))
+  }
+
+  return { created, skipped }
+}

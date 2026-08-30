@@ -58,6 +58,25 @@ async function loadStaticContext(gymId: string): Promise<string> {
   ])
   if (!gym || !config) throw new Error('Gym or config missing')
 
+  // Active groups, so the model can resolve "the basketball group" without a
+  // lookup round-trip. Rides in the cached prefix with the rest of this block.
+  const groups = await db.group.findMany({
+    where: { gymId, active: true },
+    include: {
+      members: { select: { athleteId: true } },
+      coaches: { include: { trainer: { select: { user: { select: { name: true } } } } } },
+    },
+    orderBy: { name: 'asc' },
+  })
+  const groupLines = groups.map((g) => {
+    const when =
+      g.dayOfWeek !== null && g.startMinute !== null
+        ? `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][g.dayOfWeek]} ${fmtMinute(g.startMinute)} (${g.duration}min)`
+        : 'no weekly time'
+    const coaches = g.coaches.map((c) => c.trainer.user.name).join(' & ') || 'no coaches'
+    return `- ${g.name} (id: ${g.id}): ${when}, ${g.members.length} members, coached by ${coaches}`
+  })
+
   const trainerLines = trainers.map((t) => {
     const days = t.availability
       .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
@@ -82,7 +101,10 @@ ${gym.name} (timezone: ${gym.timezone})
 - No-show policy: ${config.noShowPolicy}
 
 # Trainers
-${trainerLines.join('\n')}`
+${trainerLines.join('\n')}
+
+# Groups
+${groupLines.length ? groupLines.join('\n') : '- none yet'}`
 }
 
 function fmtMinute(m: number): string {
@@ -110,7 +132,19 @@ You are not the authority on the schedule. The engine is. Every booking decision
 Plain, short, friendly. Jordan is a gym owner, not a computer person. Don't use jargon. Don't dump JSON. When you describe times, use "9am" not "09:00:00".
 
 # Today
-The current date/time will be in the user message context.`
+The current date/time will be in the user message context.
+
+# Groups
+A group is a named, recurring cohort — "the basketball group, Mondays at 11am".
+- create_group makes the group and its roster. It books NOTHING. Say so, then
+  ask whether to put it on the calendar.
+- materialize_group is what actually creates sessions. Treat it like a commit:
+  only call it after the owner says yes, and read back what it created and
+  skipped ("8 weeks booked, 1 skipped — Scott's already got that hour").
+- update_group changes rosters. Roster changes only affect FUTURE
+  materializations; sessions already booked keep the people who were on them.
+- A group can have several coaches. The first is the lead and shows on the
+  calendar; every coach is checked for double-booking.`
 
 // Helper for building SSE event chunks. Each event is two newlines apart
 // per the protocol. JSON payload keeps things easy on the client.

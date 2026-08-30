@@ -5,6 +5,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
+import { materializeGroup } from '@/lib/scheduling/engine'
 import { hashPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -489,12 +490,83 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
       },
       required: ['athleteId', 'dayOfWeek', 'startMinute'],
     },
+  },
+  {
+    name: 'list_groups',
+    description:
+      "List the gym's named training groups (e.g. 'the basketball group') with their weekly time, members and coaches. Use this to resolve a group the owner refers to by name.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        includeInactive: { type: 'boolean', description: 'Defaults to false.' },
+      },
+    },
+  },
+  {
+    name: 'create_group',
+    description:
+      "Create a named training group with an optional weekly time, a roster of athletes and one or more coaches. Example: 'basketball group, Mondays at 11am, these kids'. The first coach listed is the lead. Creating a group does NOT book anything — call materialize_group to put sessions on the calendar.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        athleteIds: { type: 'array', items: { type: 'string' } },
+        coachIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Trainer ids. First one becomes the lead coach.',
+        },
+        dayOfWeek: { type: 'number', description: '0=Sun..6=Sat. Omit for a roster-only group.' },
+        time: { type: 'string', description: '"HH:MM" 24h, gym-local.' },
+        duration: { type: 'number', description: 'Defaults to 60.' },
+        notes: { type: 'string' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'update_group',
+    description:
+      'Change a group: rename, add or remove members or coaches, set the lead coach, change the weekly time, or pause it. Only pass what changes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'string' },
+        name: { type: 'string' },
+        addAthleteIds: { type: 'array', items: { type: 'string' } },
+        removeAthleteIds: { type: 'array', items: { type: 'string' } },
+        addCoachIds: { type: 'array', items: { type: 'string' } },
+        removeCoachIds: { type: 'array', items: { type: 'string' } },
+        setLeadCoachId: { type: 'string' },
+        dayOfWeek: { type: 'number' },
+        time: { type: 'string', description: '"HH:MM" 24h, gym-local.' },
+        duration: { type: 'number' },
+        active: { type: 'boolean' },
+        notes: { type: 'string' },
+      },
+      required: ['groupId'],
+    },
+  },
+  {
+    name: 'materialize_group',
+    description:
+      "Put a group's weekly sessions on the calendar for the next N weeks. Skips weeks that are already booked or that conflict, and reports both. Safe to run twice.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        groupId: { type: 'string' },
+        weeks: { type: 'number', description: 'Defaults to 8.' },
+      },
+      required: ['groupId'],
+    },
     // cache_control on the LAST tool caches every tool definition up to
     // and including this one. Tools are huge (~5k tokens) and rarely
     // change, so caching them is the biggest single cost win.
     cache_control: { type: 'ephemeral' },
   },
 ]
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 interface DispatchContext {
   gymId: string
@@ -1256,6 +1328,175 @@ export async function dispatchTool(
 
     case 'unarchive_athlete': {
       return await unarchiveAthlete(gymId, String(input.athleteId))
+    }
+
+    case 'list_groups': {
+      const groups = await db.group.findMany({
+        where: { gymId, ...(input.includeInactive ? {} : { active: true }) },
+        include: {
+          members: { include: { athlete: { select: { firstName: true, lastName: true, archived: true } } } },
+          coaches: { include: { trainer: { select: { id: true, user: { select: { name: true } } } } } },
+        },
+        orderBy: { name: 'asc' },
+      })
+      return {
+        groups: groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          active: g.active,
+          when:
+            g.dayOfWeek !== null && g.startMinute !== null
+              ? `${DAY_NAMES[g.dayOfWeek]} ${formatMinute(g.startMinute)} (${g.duration}min)`
+              : 'no weekly time set',
+          coaches: g.coaches
+            .sort((a, b) => Number(b.isLead) - Number(a.isLead))
+            .map((c) => ({ id: c.trainerId, name: c.trainer.user.name, lead: c.isLead })),
+          members: g.members
+            .filter((m) => !m.athlete.archived)
+            .map((m) => `${m.athlete.firstName} ${m.athlete.lastName}`),
+          memberCount: g.members.filter((m) => !m.athlete.archived).length,
+        })),
+      }
+    }
+
+    case 'create_group': {
+      const name = String(input.name ?? '').trim()
+      if (!name) return { error: 'Group needs a name.' }
+      const athleteIds: string[] = Array.isArray(input.athleteIds)
+        ? (input.athleteIds as string[]).map(String)
+        : []
+      const coachIds: string[] = Array.isArray(input.coachIds)
+        ? (input.coachIds as string[]).map(String)
+        : []
+      let startMinute: number | null = null
+      if (typeof input.time === 'string') {
+        const m = input.time.match(/^(\d{1,2}):(\d{2})$/)
+        if (!m) return { error: 'time must be "HH:MM" in 24h form.' }
+        startMinute = Number(m[1]) * 60 + Number(m[2])
+      }
+      const dayOfWeek =
+        input.dayOfWeek === undefined || input.dayOfWeek === null
+          ? null
+          : Number(input.dayOfWeek)
+      if (dayOfWeek !== null && (dayOfWeek < 0 || dayOfWeek > 6)) {
+        return { error: 'dayOfWeek must be 0 (Sun) to 6 (Sat).' }
+      }
+      try {
+        const group = await db.group.create({
+          data: {
+            gymId,
+            name,
+            dayOfWeek,
+            startMinute,
+            duration: input.duration ? Number(input.duration) : 60,
+            notes: input.notes ? String(input.notes) : null,
+            members: { create: athleteIds.map((athleteId) => ({ athleteId })) },
+            coaches: {
+              create: coachIds.map((trainerId, i) => ({ trainerId, isLead: i === 0 })),
+            },
+          },
+        })
+        return {
+          ok: true,
+          groupId: group.id,
+          name: group.name,
+          memberCount: athleteIds.length,
+          coachCount: coachIds.length,
+          when:
+            dayOfWeek !== null && startMinute !== null
+              ? `${DAY_NAMES[dayOfWeek]} ${formatMinute(startMinute)}`
+              : 'no weekly time set',
+          note: 'Nothing is on the calendar yet — call materialize_group when the owner confirms.',
+        }
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2002') {
+          return { error: `A group named "${name}" already exists.` }
+        }
+        throw err
+      }
+    }
+
+    case 'update_group': {
+      const groupId = String(input.groupId)
+      const group = await db.group.findUnique({ where: { id: groupId } })
+      if (!group || group.gymId !== gymId) return { error: 'Group not found.' }
+
+      const data: Record<string, unknown> = {}
+      if (input.name !== undefined) data.name = String(input.name).trim()
+      if (input.dayOfWeek !== undefined)
+        data.dayOfWeek = input.dayOfWeek === null ? null : Number(input.dayOfWeek)
+      if (typeof input.time === 'string') {
+        const m = input.time.match(/^(\d{1,2}):(\d{2})$/)
+        if (!m) return { error: 'time must be "HH:MM" in 24h form.' }
+        data.startMinute = Number(m[1]) * 60 + Number(m[2])
+      }
+      if (input.duration !== undefined) data.duration = Number(input.duration)
+      if (input.active !== undefined) data.active = Boolean(input.active)
+      if (input.notes !== undefined) data.notes = input.notes ? String(input.notes) : null
+
+      if (Object.keys(data).length) await db.group.update({ where: { id: groupId }, data })
+
+      for (const athleteId of (input.addAthleteIds as string[] | undefined) ?? []) {
+        await db.groupMember.upsert({
+          where: { groupId_athleteId: { groupId, athleteId: String(athleteId) } },
+          create: { groupId, athleteId: String(athleteId) },
+          update: {},
+        })
+      }
+      if (Array.isArray(input.removeAthleteIds) && input.removeAthleteIds.length) {
+        await db.groupMember.deleteMany({
+          where: { groupId, athleteId: { in: (input.removeAthleteIds as string[]).map(String) } },
+        })
+      }
+      for (const trainerId of (input.addCoachIds as string[] | undefined) ?? []) {
+        await db.groupCoach.upsert({
+          where: { groupId_trainerId: { groupId, trainerId: String(trainerId) } },
+          create: { groupId, trainerId: String(trainerId), isLead: false },
+          update: {},
+        })
+      }
+      if (Array.isArray(input.removeCoachIds) && input.removeCoachIds.length) {
+        await db.groupCoach.deleteMany({
+          where: { groupId, trainerId: { in: (input.removeCoachIds as string[]).map(String) } },
+        })
+      }
+      if (input.setLeadCoachId) {
+        await db.groupCoach.updateMany({ where: { groupId }, data: { isLead: false } })
+        await db.groupCoach.updateMany({
+          where: { groupId, trainerId: String(input.setLeadCoachId) },
+          data: { isLead: true },
+        })
+      }
+
+      const after = await db.group.findUnique({
+        where: { id: groupId },
+        include: {
+          members: { include: { athlete: { select: { firstName: true, lastName: true } } } },
+          coaches: { include: { trainer: { select: { user: { select: { name: true } } } } } },
+        },
+      })
+      return {
+        ok: true,
+        name: after?.name,
+        members: after?.members.map((m) => `${m.athlete.firstName} ${m.athlete.lastName}`) ?? [],
+        coaches: after?.coaches.map((c) => c.trainer.user.name) ?? [],
+        note: 'Roster changes affect future materializations, not sessions already on the calendar.',
+      }
+    }
+
+    case 'materialize_group': {
+      const groupId = String(input.groupId)
+      const group = await db.group.findUnique({ where: { id: groupId } })
+      if (!group || group.gymId !== gymId) return { error: 'Group not found.' }
+      const weeks = Math.min(Math.max(Number(input.weeks ?? 8), 1), 26)
+      const result = await materializeGroup(groupId, weeks)
+      return {
+        ok: true,
+        groupName: group.name,
+        created: result.created.length,
+        skipped: result.skipped.length,
+        skippedDetail: result.skipped.slice(0, 8),
+      }
     }
 
     case 'set_athlete_standing_slot': {

@@ -34,6 +34,7 @@ model Gym {
   waiverSignatures WaiverSignature[]
   draftSchedules   DraftSchedule[]
   bookingRequests  BookingRequest[]
+  groups           Group[]
 }
 
 model GymConfig {
@@ -81,6 +82,8 @@ model Trainer {
 
   athletes        Athlete[]
   sessions        Session[]
+  sessionCoaches  SessionCoach[]
+  groupCoaches    GroupCoach[]
   availability    TrainerAvailability[]
   exceptions      AvailabilityException[]
   bookingRequests BookingRequest[]
@@ -151,6 +154,7 @@ model Athlete {
   oauthAccessTokens    OAuthAccessToken[]
   oauthRefreshTokens   OAuthRefreshToken[]
   bookingRequests      BookingRequest[]
+  groupMemberships     GroupMember[]
   createdAt            DateTime  @default(now())
 
   @@index([gymId])
@@ -188,10 +192,17 @@ model Session {
   notes             String?
   createdAt         DateTime  @default(now())
 
+  // Set when this session came from a Group's recurring schedule.
+  groupId           String?
+
   gym             Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
   trainer         Trainer   @relation(fields: [trainerId], references: [id])
   athlete         Athlete   @relation(fields: [athleteId], references: [id])
+  group           Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attendees       SessionAttendee[]
+  // trainerId stays the lead coach so every existing query keeps working;
+  // this is the full roster including that lead.
+  coaches         SessionCoach[]
   parentSession   Session?  @relation("RecurringSessions", fields: [parentSessionId], references: [id])
   childSessions   Session[] @relation("RecurringSessions")
   checkIn         CheckIn?
@@ -199,6 +210,7 @@ model Session {
 
   @@index([gymId, scheduledAt])
   @@index([trainerId, scheduledAt])
+  @@index([groupId])
 }
 
 model SessionAttendee {
@@ -277,6 +289,8 @@ model DraftSchedule {
   @@index([gymId, status])
 }
 
+// NOTE: attendeeIds/coachIds replace the old trick of stuffing a roster into
+// `notes` as "Group of N: id1,id2" and regex-parsing it back at commit time.
 model ProposedBooking {
   id                String        @id @default(cuid())
   draftId           String
@@ -289,6 +303,12 @@ model ProposedBooking {
   existingSessionId String?
   notes             String?
   conflictReason    String?
+  // Full rosters for group proposals. Empty means a single booking that uses
+  // athleteId/trainerId. Bare string arrays, matching how trainerId/athleteId
+  // are already stored on this staging table.
+  attendeeIds       String[] @default([])
+  coachIds          String[] @default([])
+  groupId           String?
   status            String        @default("pending")
   createdAt         DateTime      @default(now())
 
@@ -466,4 +486,72 @@ model Blast {
   createdAt      DateTime  @default(now())
 
   @@index([gymId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Groups — named, recurring training cohorts ("the basketball group")
+// ---------------------------------------------------------------------------
+
+model Group {
+  id          String   @id @default(cuid())
+  gymId       String
+  gym         Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  name        String
+  // Recurrence. Null means an ad-hoc group that exists only as a roster —
+  // useful for email blasts without a standing time.
+  dayOfWeek   Int?
+  startMinute Int?
+  duration    Int      @default(60)
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  GroupMember[]
+  coaches  GroupCoach[]
+  sessions Session[]
+
+  // Unique per gym so the AI can resolve "the basketball group" by name.
+  @@unique([gymId, name])
+  @@index([gymId, active])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  athleteId String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  athlete   Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, athleteId])
+  @@index([athleteId])
+}
+
+model GroupCoach {
+  id        String   @id @default(cuid())
+  groupId   String
+  trainerId String
+  // Exactly one lead per group; becomes Session.trainerId on materialize so
+  // every existing single-trainer query keeps working.
+  isLead    Boolean  @default(false)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  trainer   Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, trainerId])
+  @@index([trainerId])
+}
+
+// Multiple coaches on one session. Session.trainerId remains the lead.
+model SessionCoach {
+  id        String   @id @default(cuid())
+  sessionId String
+  trainerId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  trainer   Trainer  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, trainerId])
+  @@index([trainerId])
 }
