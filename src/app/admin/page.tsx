@@ -252,6 +252,12 @@ export default function AdminHome() {
           <span className="dsc-label text-black/60 hidden sm:inline">
             {user?.name}
           </span>
+          <Link
+            href="/account"
+            className="dsc-label text-black/60 hover:text-black"
+          >
+            Account
+          </Link>
           <button
             onClick={handleLogout}
             className="dsc-label text-black/60 hover:text-black"

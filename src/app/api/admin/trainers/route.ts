@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, hashPassword } from '@/lib/auth'
+import { getSession, hashPassword, generateTempPassword } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 
@@ -31,11 +31,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate email if not provided
-    const trainerEmail = email || `${name.toLowerCase().replace(/\s+/g, '.')}@dsc.com`
+    // A real address is required. The old fallback minted `name@dsc.com`,
+    // which is undeliverable — that is why six trainers get no reminders.
+    const trainerEmail = String(email ?? '').trim().toLowerCase()
+    if (!trainerEmail || !trainerEmail.includes('@') || trainerEmail.endsWith('@dsc.com')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A real email address is required — it is where reminders go. A personal address is fine.',
+        },
+        { status: 400 }
+      )
+    }
 
-    // Use default password if not provided
-    const trainerPassword = password || 'trainer123'
+    // Never a shared literal: that is how every trainer ended up sharing one.
+    const trainerPassword = password || generateTempPassword()
     const passwordHash = await hashPassword(trainerPassword)
 
     // Check if email already exists
