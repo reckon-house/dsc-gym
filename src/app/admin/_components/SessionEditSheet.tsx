@@ -55,6 +55,10 @@ export function SessionEditSheet({
   const [duration, setDuration] = useState<number>(60)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Live roster for an existing session — edited in place rather than on save,
+  // because each add/remove is its own operation against one session.
+  const [roster, setRoster] = useState<{ id: string; firstName: string; lastName: string }[]>([])
+  const [adding, setAdding] = useState('')
   const isEditing = Boolean(initial?.id)
 
   useEffect(() => {
@@ -63,6 +67,8 @@ export function SessionEditSheet({
     setAthleteId(initial?.athleteId ?? '')
     setWhen(toLocalDatetimeInput(initial?.scheduledAt))
     setDuration(initial?.duration ?? 60)
+    setRoster(initial?.attendees ?? [])
+    setAdding('')
     setError(null)
   }, [open, initial])
 
@@ -99,6 +105,47 @@ export function SessionEditSheet({
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * Add or remove one person, applied immediately.
+   *
+   * Not batched into Save on purpose: this is the operation that used to be
+   * impossible, and it must not travel through the reschedule validation —
+   * that is what reported the coach as busy with the very session being
+   * joined.
+   */
+  async function changeAttendee(action: 'add' | 'remove', athleteId: string) {
+    if (!initial?.id) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/sessions/${initial.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          action === 'add' ? { addAthleteIds: [athleteId] } : { removeAthleteIds: [athleteId] }
+        ),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setError(data.error ?? 'Could not change who is in this session.')
+        return
+      }
+      const person = athletes.find((a) => a.id === athleteId)
+      setRoster((prev) =>
+        action === 'add'
+          ? person
+            ? [...prev, { id: person.id, firstName: person.firstName, lastName: person.lastName }]
+            : prev
+          : prev.filter((r) => r.id !== athleteId)
+      )
+      onSaved()
+    } catch {
+      setError('Could not reach the server.')
     } finally {
       setSaving(false)
     }
@@ -175,21 +222,49 @@ export function SessionEditSheet({
             </select>
           </Field>
 
-          {(initial?.attendees?.length ?? 0) > 1 ? (
-            <Field label={`Athletes (group of ${initial!.attendees!.length})`}>
-              <div className="flex flex-wrap gap-1.5 px-3 py-2 bg-black/5 rounded-xl">
-                {initial!.attendees!.map((a) => (
+          {isEditing && (roster.length > 1 || (initial?.attendees?.length ?? 0) > 1) ? (
+            <Field label={`Who's in this session (${roster.length})`}>
+              <div className="flex flex-wrap gap-1.5 px-3 py-2 bg-black/5 rounded-xl min-h-[44px]">
+                {roster.map((a) => (
                   <span
                     key={a.id}
-                    className="inline-block px-2 py-0.5 rounded bg-black text-white text-xs"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-black text-white text-xs"
                   >
                     {a.firstName} {a.lastName}
+                    <button
+                      type="button"
+                      onClick={() => changeAttendee('remove', a.id)}
+                      disabled={saving}
+                      aria-label={`Remove ${a.firstName} from this session`}
+                      className="opacity-60 hover:opacity-100 disabled:opacity-30"
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
+              <select
+                value={adding}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setAdding('')
+                  if (id) changeAttendee('add', id)
+                }}
+                disabled={saving}
+                className="w-full h-11 px-3 mt-2 bg-black/5 rounded-xl text-black"
+              >
+                <option value="">Add someone to this session…</option>
+                {sortedAthletes
+                  .filter((a) => !roster.some((r) => r.id === a.id))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.firstName} {a.lastName}
+                    </option>
+                  ))}
+              </select>
               <div className="text-xs text-black/40 mt-1">
-                Group rosters can&rsquo;t be edited here yet — use the chat to
-                add/remove attendees.
+                Changes only this session — the group roster and every other week
+                stay as they are.
               </div>
             </Field>
           ) : (

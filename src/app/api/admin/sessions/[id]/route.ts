@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
-import { validateBooking } from '@/lib/scheduling/engine'
+import { validateBooking, addSessionAttendee, removeSessionAttendee } from '@/lib/scheduling/engine'
 
 export async function PATCH(
   request: NextRequest,
@@ -24,8 +24,43 @@ export async function PATCH(
   }
 
   const body = await request.json()
+
+  // Attendee edits are their own operation, handled before (and separately
+  // from) any reschedule. They must NOT go through validateBooking: adding a
+  // body to a session that already exists would collide with that very
+  // session and report the coach as busy. See addSessionAttendee.
+  const addIds: string[] = Array.isArray(body.addAthleteIds) ? body.addAthleteIds.map(String) : []
+  const removeIds: string[] = Array.isArray(body.removeAthleteIds)
+    ? body.removeAthleteIds.map(String)
+    : []
+  if (addIds.length || removeIds.length) {
+    const problems: string[] = []
+    for (const athleteId of addIds) {
+      const r = await addSessionAttendee(DEFAULT_GYM_ID, id, athleteId)
+      if (!r.ok && r.error) problems.push(r.error)
+    }
+    for (const athleteId of removeIds) {
+      const r = await removeSessionAttendee(DEFAULT_GYM_ID, id, athleteId)
+      if (!r.ok && r.error) problems.push(r.error)
+    }
+    if (problems.length) {
+      return NextResponse.json({ success: false, error: problems[0], problems }, { status: 409 })
+    }
+    // An attendee-only edit is complete; nothing to reschedule.
+    if (
+      body.trainerId === undefined &&
+      body.athleteId === undefined &&
+      body.scheduledAt === undefined &&
+      body.duration === undefined &&
+      body.notes === undefined
+    ) {
+      return NextResponse.json({ success: true })
+    }
+  }
+
   const nextTrainerId = body.trainerId ?? existing.trainerId
-  const nextAthleteId = body.athleteId ?? existing.athleteId
+  const fresh = await db.session.findUnique({ where: { id } })
+  const nextAthleteId = body.athleteId ?? fresh?.athleteId ?? existing.athleteId
   const nextScheduledAt = body.scheduledAt
     ? new Date(body.scheduledAt)
     : existing.scheduledAt
