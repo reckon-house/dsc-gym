@@ -80,6 +80,12 @@ export async function POST(request: NextRequest) {
         startMinute,
         duration: body.duration ? Number(body.duration) : 60,
         notes: body.notes ? String(body.notes) : null,
+        openForSignup: Boolean(body.openForSignup),
+        capacity:
+          body.capacity === null || body.capacity === undefined || body.capacity === ''
+            ? null
+            : Number(body.capacity),
+        description: body.description ? String(body.description) : null,
         members: { create: memberIds.map((athleteId) => ({ athleteId })) },
         // First coach listed is the lead — they become Session.trainerId.
         coaches: {

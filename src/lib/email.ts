@@ -629,3 +629,111 @@ ${
 
   return { subject: args.subject, text, html }
 }
+
+/** Owner-facing: a family wants a spot in an open class. */
+export function buildGroupJoinRequestEmail(args: {
+  athleteName: string
+  groupName: string
+  whenHuman: string
+  spotsLine: string
+  note: string | null
+  adminUrl: string
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `${args.athleteName} wants a spot in ${args.groupName}`
+  const intro = `${args.athleteName} asked to join ${args.groupName} (${args.whenHuman}). ${args.spotsLine}${
+    args.note ? ` They added: "${args.note}"` : ''
+  }`
+
+  const text = `${intro}
+
+Approve or decline: ${args.adminUrl}
+
+— Dallas Sport Collective`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Class request',
+    logoUrl: args.logoUrl,
+    headline: 'Someone wants in',
+    intro,
+    buttonLabel: 'Review the request',
+    buttonUrl: args.adminUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.adminUrl,
+    footnote: 'Nothing changes until you approve it.',
+  })
+
+  return { subject, text, html }
+}
+
+/** Family-facing: they're in, here's when it meets. */
+export function buildGroupJoinApprovedEmail(args: {
+  firstName: string
+  groupName: string
+  whenHuman: string
+  coachLine: string
+  dashboardUrl: string
+  logoUrl?: string
+  heroImageUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `You're in — ${args.groupName}`
+  const intro = `${args.firstName} has a spot in ${args.groupName}. It meets ${args.whenHuman}${args.coachLine}. The sessions are on your schedule now.`
+
+  const text = `${intro}
+
+See your schedule: ${args.dashboardUrl}
+
+— Dallas Sport Collective`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Class confirmed',
+    logoUrl: args.logoUrl,
+    heroImageUrl: args.heroImageUrl,
+    headline: "You're in",
+    intro,
+    buttonLabel: 'See the schedule',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reminders go out the day before each session.',
+  })
+
+  return { subject, text, html }
+}
+
+/** Family-facing: not this time. */
+export function buildGroupJoinDeclinedEmail(args: {
+  firstName: string
+  groupName: string
+  reason: string | null
+  dashboardUrl: string
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `About ${args.groupName}`
+  const intro = args.reason
+    ? `We couldn't get ${args.firstName} into ${args.groupName} — ${args.reason}`
+    : `We couldn't get ${args.firstName} into ${args.groupName} right now. Get in touch and we'll find something that fits.`
+
+  const text = `${intro}
+
+See what else is open: ${args.dashboardUrl}
+
+— Dallas Sport Collective`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Class request',
+    logoUrl: args.logoUrl,
+    headline: 'Not this one',
+    intro,
+    buttonLabel: 'See what else is open',
+    buttonUrl: args.dashboardUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.dashboardUrl,
+    footnote: 'Reply to this email if you want a hand finding a fit.',
+  })
+
+  return { subject, text, html }
+}

@@ -69,3 +69,37 @@ export async function markFamilyVerified(email: string) {
     },
   })
 }
+
+/**
+ * The signed-in family, read from the athleteSession cookie.
+ *
+ * `activeId` is the kid currently being viewed; `athleteIds` is everyone on
+ * that login. Anything family-wide (browsing classes, join requests) should use
+ * the full list, or a parent with two kids sees the schedule twice over.
+ */
+export async function readAthleteSession(): Promise<
+  { activeId: string; athleteIds: string[] } | null
+> {
+  const { cookies } = await import('next/headers')
+  const { jwtVerify } = await import('jose')
+  const secret = new TextEncoder().encode(
+    process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  )
+
+  const token = (await cookies()).get('athleteSession')?.value
+  if (!token) return null
+
+  try {
+    const { payload } = await jwtVerify(token, secret)
+    if (payload.role !== 'ATHLETE' || !payload.athleteId) return null
+    const activeId = payload.athleteId as string
+    // Cookies issued before family accounts shipped carry no athleteIds; fall
+    // back to the single athlete rather than refusing a still-valid login.
+    const ids = Array.isArray(payload.athleteIds)
+      ? (payload.athleteIds as string[])
+      : [activeId]
+    return { activeId, athleteIds: ids.length ? ids : [activeId] }
+  } catch {
+    return null
+  }
+}

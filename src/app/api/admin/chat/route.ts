@@ -74,7 +74,15 @@ async function loadStaticContext(gymId: string): Promise<string> {
         ? `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][g.dayOfWeek]} ${fmtMinute(g.startMinute)} (${g.duration}min)`
         : 'no weekly time'
     const coaches = g.coaches.map((c) => c.trainer.user.name).join(' & ') || 'no coaches'
-    return `- ${g.name} (id: ${g.id}): ${when}, ${g.members.length} members, coached by ${coaches}`
+    const open = g.openForSignup
+      ? `, OPEN for signups${g.capacity !== null ? ` (${g.members.length}/${g.capacity})` : ''}`
+      : ''
+    return `- ${g.name} (id: ${g.id}): ${when}, ${g.members.length} members, coached by ${coaches}${open}`
+  })
+
+  // Surfaced in the cached prefix so the owner can just ask "anyone waiting?"
+  const pendingClassRequests = await db.groupJoinRequest.count({
+    where: { gymId, status: 'pending' },
   })
 
   const trainerLines = trainers.map((t) => {
@@ -104,7 +112,8 @@ ${gym.name} (timezone: ${gym.timezone})
 ${trainerLines.join('\n')}
 
 # Groups
-${groupLines.length ? groupLines.join('\n') : '- none yet'}`
+${groupLines.length ? groupLines.join('\n') : '- none yet'}
+${pendingClassRequests > 0 ? `\n# Waiting\n- ${pendingClassRequests} family request(s) for a spot in an open class. Call list_class_requests for details.` : ''}`
 }
 
 function fmtMinute(m: number): string {
@@ -141,10 +150,26 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - materialize_group is what actually creates sessions. Treat it like a commit:
   only call it after the owner says yes, and read back what it created and
   skipped ("8 weeks booked, 1 skipped — Scott's already got that hour").
-- update_group changes rosters. Roster changes only affect FUTURE
-  materializations; sessions already booked keep the people who were on them.
+- update_group changes rosters. Adding someone ALSO puts them into the group's
+  upcoming sessions, and removing someone takes them out — so don't tell the
+  owner a roster change is future-only.
 - A group can have several coaches. The first is the lead and shows on the
   calendar; every coach is checked for double-booking.
+
+# Open classes
+A group can be marked openForSignup. That makes it visible on families'
+schedules even with an EMPTY roster, and they can ask for a spot. This is how
+the owner advertises a class before anyone has joined — the answer to "I can't
+build a group without athletes yet".
+- When the owner describes a class they want to fill ("start a Tuesday guards
+  group and let people sign up"), create it with openForSignup: true, and set
+  capacity if they mention a limit.
+- An open group with nobody in it is normal and correct. Do not warn about it.
+- list_class_requests shows families waiting. approve_class_request adds them
+  to the roster AND their upcoming sessions; decline_class_request emails the
+  reason you pass, so write it for a parent to read.
+- Approving is not a draft — it takes effect immediately. Confirm with the
+  owner before approving or declining unless they already said which.
 
 # Announcements (email blasts)
 You can email groups of athletes. You NEVER send without an explicit yes.

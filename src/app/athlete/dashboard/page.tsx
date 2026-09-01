@@ -64,6 +64,22 @@ interface GymOverview {
   mcpUrl: string
 }
 
+interface OpenGroup {
+  id: string
+  name: string
+  description: string | null
+  dayOfWeek: number
+  startMinute: number
+  duration: number
+  coachNames: string[]
+  capacity: number | null
+  enrolled: number
+  spotsLeft: number | null
+  full: boolean
+  occurrences: { key: string; startsAt: string; duration: number; sessionId: string | null }[]
+  membership: 'member' | 'pending' | 'none'
+}
+
 interface ConnectionStatus {
   connected: boolean
   lastUsedAt: string | null
@@ -89,6 +105,7 @@ export default function AthleteDashboard() {
   const [gymOverview, setGymOverview] = useState<GymOverview | null>(null)
   const [trainers, setTrainers] = useState<TrainerProfile[]>([])
   const [connection, setConnection] = useState<ConnectionStatus | null>(null)
+  const [openGroups, setOpenGroups] = useState<OpenGroup[]>([])
   // More than one entry means this mailbox covers several kids — a parent.
   const [family, setFamily] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [switching, setSwitching] = useState(false)
@@ -104,11 +121,12 @@ export default function AthleteDashboard() {
       }
       setAthlete(d.athlete)
       setFamily(Array.isArray(d.family) ? d.family : [])
-      const [sRes, rRes, gRes, cRes] = await Promise.all([
+      const [sRes, rRes, gRes, cRes, ogRes] = await Promise.all([
         fetch('/api/athletes/me/sessions'),
         fetch('/api/athletes/me/requests'),
         fetch('/api/gym/overview'),
         fetch('/api/athletes/me/connection-status'),
+        fetch('/api/athletes/me/groups'),
       ])
       const sData = await sRes.json()
       if (sData.success) setSessions(sData.data)
@@ -121,9 +139,17 @@ export default function AthleteDashboard() {
       }
       const cData = await cRes.json()
       if (cData.success) setConnection(cData.data)
+      const ogData = await ogRes.json()
+      if (ogData.success) setOpenGroups(ogData.data)
       setLoading(false)
     })()
   }, [router])
+
+  async function reloadGroups() {
+    const r = await fetch('/api/athletes/me/groups')
+    const d = await r.json()
+    if (d.success) setOpenGroups(d.data)
+  }
 
   // Switching re-signs the session cookie; every /me route reads the active
   // athlete from that cookie, so a plain reload picks up the new kid.
@@ -314,6 +340,16 @@ export default function AthleteDashboard() {
               )
             })}
           </div>
+        )}
+
+        {/* Classes with space. Shown even when the athlete has no sessions —
+            the whole point is that a new family's schedule isn't blank. */}
+        {openGroups.length > 0 && (
+          <OpenClasses
+            groups={openGroups}
+            activeAthleteId={athlete?.id ?? ''}
+            onChanged={reloadGroups}
+          />
         )}
 
         {/* Meet the team */}
@@ -809,5 +845,166 @@ function GymInfoFooter({ overview }: { overview: GymOverview }) {
         )}
       </div>
     </div>
+  )
+}
+
+const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function fmtMinuteOfDay(m: number): string {
+  const h = Math.floor(m / 60)
+  const mm = String(m % 60).padStart(2, '0')
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mm}${ampm}`
+}
+
+/**
+ * Classes with space in them.
+ *
+ * These rows are projected from each group's weekly rule, not read off booked
+ * sessions — that's what lets a brand-new class show here with nobody in it
+ * yet. Asking for a spot files a request; it never books anything directly.
+ */
+function OpenClasses({
+  groups,
+  activeAthleteId,
+  onChanged,
+}: {
+  groups: OpenGroup[]
+  activeAthleteId: string
+  onChanged: () => Promise<void> | void
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function request(groupId: string) {
+    setBusyId(groupId)
+    setError(null)
+    try {
+      const r = await fetch(`/api/athletes/me/groups/${groupId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athleteId: activeAthleteId }),
+      })
+      const d = await r.json()
+      if (!d.success) {
+        setError(d.error ?? 'Could not send that request.')
+        return
+      }
+      await onChanged()
+    } catch {
+      setError('Could not reach the gym. Try again in a moment.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function cancel(groupId: string) {
+    setBusyId(groupId)
+    setError(null)
+    try {
+      await fetch(`/api/athletes/me/groups/${groupId}/join`, { method: 'DELETE' })
+      await onChanged()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="mt-8">
+      <div className="dsc-label text-black/50 mb-3">Classes with space</div>
+
+      {error && (
+        <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 mb-3">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {groups.map((g) => {
+          const next = g.occurrences[0]
+          const busy = busyId === g.id
+          return (
+            <div key={g.id} className="rounded-2xl border border-black/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="dsc-headline text-lg text-black truncate">{g.name}</div>
+                  <div className="font-mono text-sm text-black/70 mt-0.5">
+                    {FULL_DAYS[g.dayOfWeek]}s · {fmtMinuteOfDay(g.startMinute)} · {g.duration} min
+                  </div>
+                  {g.coachNames.length > 0 && (
+                    <div className="text-sm text-black/50 mt-0.5">
+                      with {g.coachNames.map((n) => n.split(' ')[0]).join(' & ')}
+                    </div>
+                  )}
+                  {g.description && (
+                    <p className="text-sm text-black/60 mt-2">{g.description}</p>
+                  )}
+                </div>
+
+                <div className="shrink-0 text-right">
+                  {g.capacity !== null ? (
+                    <>
+                      <div className="dsc-headline text-2xl text-black leading-none">
+                        {g.spotsLeft}
+                      </div>
+                      <div className="dsc-label text-black/40 mt-1">
+                        {g.spotsLeft === 1 ? 'spot' : 'spots'}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="dsc-label text-black/40">Open</div>
+                  )}
+                </div>
+              </div>
+
+              {next && (
+                <div className="dsc-label text-black/40 mt-3">
+                  Next:{' '}
+                  {new Date(next.startsAt).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </div>
+              )}
+
+              <div className="mt-3">
+                {g.membership === 'member' ? (
+                  <div className="dsc-label text-emerald-700">
+                    You&rsquo;re in this class
+                  </div>
+                ) : g.membership === 'pending' ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="dsc-label text-amber-700">Request sent</span>
+                    <button
+                      onClick={() => cancel(g.id)}
+                      disabled={busy}
+                      className="dsc-label text-black/40 hover:text-black disabled:opacity-40"
+                    >
+                      {busy ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  </div>
+                ) : g.full ? (
+                  <div className="dsc-label text-black/40">Full right now</div>
+                ) : (
+                  <button
+                    onClick={() => request(g.id)}
+                    disabled={busy}
+                    className="w-full h-11 bg-black text-white rounded-full font-semibold text-sm disabled:bg-black/30"
+                  >
+                    {busy ? 'Sending…' : 'Ask for a spot'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="text-xs text-black/40 mt-3">
+        Asking doesn&rsquo;t book anything — the gym confirms each spot and emails you.
+      </p>
+    </section>
   )
 }

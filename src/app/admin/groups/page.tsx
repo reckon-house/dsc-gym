@@ -30,6 +30,9 @@ interface Group {
   duration: number
   active: boolean
   notes: string | null
+  openForSignup: boolean
+  capacity: number | null
+  description: string | null
   members: Member[]
   coaches: Coach[]
   _count: { sessions: number }
@@ -207,6 +210,14 @@ export default function GroupsPage() {
                         )}
                       </div>
                       <div className="dsc-label text-black/50 mt-1">{scheduleLine(g)}</div>
+                      {g.openForSignup && (
+                        <div className="dsc-label text-emerald-700 mt-1">
+                          Open to families
+                          {g.capacity !== null
+                            ? ` · ${active.length}/${g.capacity} spots`
+                            : ` · ${active.length} enrolled`}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => setEditing(g)}
@@ -218,7 +229,11 @@ export default function GroupsPage() {
 
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {active.length === 0 ? (
-                      <span className="dsc-label text-black/30">Nobody on the roster</span>
+                      <span className="dsc-label text-black/30">
+                        {g.openForSignup
+                          ? 'Empty — showing on family schedules, waiting for signups'
+                          : 'Nobody on the roster'}
+                      </span>
                     ) : (
                       active.map((m) => (
                         <span
@@ -322,6 +337,11 @@ function GroupSheet({
     group?.members.map((m) => m.athleteId) ?? []
   )
   const [coachIds, setCoachIds] = useState<string[]>(group?.coaches.map((c) => c.trainerId) ?? [])
+  const [openForSignup, setOpenForSignup] = useState(group?.openForSignup ?? false)
+  const [capacity, setCapacity] = useState(
+    group?.capacity === null || group?.capacity === undefined ? '' : String(group.capacity)
+  )
+  const [description, setDescription] = useState(group?.description ?? '')
   const [leadId, setLeadId] = useState<string>(
     group?.coaches.find((c) => c.isLead)?.trainerId ?? ''
   )
@@ -380,6 +400,9 @@ function GroupSheet({
             memberIds,
             // First in the list is the lead, per the POST route.
             coachIds: lead ? [lead, ...coachIds.filter((c) => c !== lead)] : coachIds,
+            openForSignup,
+            capacity: capacity.trim() === '' ? null : Number(capacity),
+            description: description.trim() || null,
           }),
         })
         const data = await res.json()
@@ -401,6 +424,9 @@ function GroupSheet({
             addCoachIds: coachIds.filter((id) => !originalCoaches.includes(id)),
             removeCoachIds: originalCoaches.filter((id) => !coachIds.includes(id)),
             setLeadCoachId: lead || undefined,
+            openForSignup,
+            capacity: capacity.trim() === '' ? null : Number(capacity),
+            description: description.trim() || null,
           }),
         })
         const data = await res.json()
@@ -508,6 +534,50 @@ function GroupSheet({
               ))}
             </div>
           </Field>
+
+          <div className="rounded-2xl bg-black/[0.04] p-3 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={openForSignup}
+                onChange={(e) => setOpenForSignup(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-black shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-black">
+                  Show this class to families
+                </span>
+                <span className="block text-xs text-black/50 mt-0.5">
+                  It appears on their schedule even with an empty roster, and they
+                  can ask for a spot. You approve every request.
+                </span>
+              </span>
+            </label>
+
+            {openForSignup && (
+              <>
+                <label className="block">
+                  <div className="dsc-label text-black/50 mb-1">Spots (optional)</div>
+                  <input
+                    value={capacity}
+                    onChange={(e) => setCapacity(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="No limit"
+                    className="w-full h-11 px-3 bg-white rounded-xl text-black placeholder:text-black/30"
+                  />
+                </label>
+                <label className="block">
+                  <div className="dsc-label text-black/50 mb-1">Who it&rsquo;s for</div>
+                  <input
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Middle-school guards working on handles"
+                    className="w-full h-11 px-3 bg-white rounded-xl text-black placeholder:text-black/30"
+                  />
+                </label>
+              </>
+            )}
+          </div>
 
           <Field label={`Coaches${coachIds.length > 1 ? ' — tap a name again to make them lead' : ''}`}>
             <div className="flex flex-wrap gap-1.5">

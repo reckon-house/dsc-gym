@@ -14,7 +14,7 @@
 //     so failures are logged loudly instead.
 
 import { db } from '@/lib/db'
-import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildStandingSlotDigestEmail, buildSessionIcs } from '@/lib/email'
+import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildStandingSlotDigestEmail, buildSessionIcs, buildGroupJoinRequestEmail, buildGroupJoinApprovedEmail, buildGroupJoinDeclinedEmail } from '@/lib/email'
 import { sendSms, smsConfigured } from '@/lib/sms'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { formatInZone, formatTime } from '@/lib/scheduling/timezone'
@@ -575,5 +575,153 @@ export async function notifyGroupMaterialized(
     }
   } catch (err) {
     console.error('[notify] notifyGroupMaterialized failed for', groupId, err)
+  }
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** "Mondays at 11:00am" — a recurring rule, not a single instant. */
+function weeklyWhen(dayOfWeek: number | null, startMinute: number | null): string {
+  if (dayOfWeek === null || startMinute === null) return 'at a time still to be set'
+  const h = Math.floor(startMinute / 60)
+  const mm = String(startMinute % 60).padStart(2, '0')
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${DAY_NAMES[dayOfWeek]}s at ${h12}:${mm}${ampm}`
+}
+
+/** Everyone who should hear that a family wants a spot. */
+async function adminRecipients(): Promise<{ email: string; name: string }[]> {
+  const admins = await db.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { email: true, name: true },
+  })
+  return admins.filter((a) => isDeliverableEmail(a.email))
+}
+
+/** Owner-facing: a family asked for a spot in an open class. */
+export async function notifyGroupJoinRequested(requestId: string): Promise<void> {
+  try {
+    const req = await db.groupJoinRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        athlete: { select: { firstName: true, lastName: true } },
+        group: {
+          include: { members: { include: { athlete: { select: { archived: true } } } } },
+        },
+      },
+    })
+    if (!req || req.status !== 'pending') return
+
+    const enrolled = req.group.members.filter((m) => !m.athlete.archived).length
+    const spotsLine =
+      req.group.capacity === null
+        ? `${enrolled} enrolled.`
+        : `${enrolled} of ${req.group.capacity} spots taken.`
+
+    const recipients = await adminRecipients()
+    if (recipients.length === 0) {
+      console.error('[notify] group join request but no admin has a deliverable email', {
+        requestId,
+      })
+      return
+    }
+
+    for (const admin of recipients) {
+      const logId = await claim({
+        gymId: req.gymId,
+        dedupeKey: `groupjoin_req:email:${req.id}:${admin.email}`,
+        type: 'group_join_requested',
+        channel: 'email',
+        recipient: admin.email,
+        athleteId: req.athleteId,
+      })
+      if (!logId) continue
+
+      const tpl = buildGroupJoinRequestEmail({
+        athleteName: `${req.athlete.firstName} ${req.athlete.lastName}`,
+        groupName: req.group.name,
+        whenHuman: weeklyWhen(req.group.dayOfWeek, req.group.startMinute),
+        spotsLine,
+        note: req.note,
+        adminUrl: `${baseUrl()}/admin`,
+        logoUrl: process.env.EMAIL_LOGO_URL,
+      })
+      const { delivered } = await sendEmail({
+        to: admin.email,
+        subject: tpl.subject,
+        text: tpl.text,
+        html: tpl.html,
+      })
+      await settle(logId, delivered ? 'sent' : 'failed')
+    }
+  } catch (err) {
+    console.error('[notify] notifyGroupJoinRequested failed', requestId, err)
+  }
+}
+
+/** Family-facing: the outcome of their request. */
+export async function notifyGroupJoinResolved(
+  requestId: string,
+  outcome: 'approved' | 'declined'
+): Promise<void> {
+  try {
+    const req = await db.groupJoinRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        athlete: { select: { firstName: true, email: true } },
+        group: {
+          include: {
+            coaches: { include: { trainer: { include: { user: true } } } },
+          },
+        },
+      },
+    })
+    if (!req) return
+
+    const email = req.athlete.email?.toLowerCase().trim()
+    if (!isDeliverableEmail(email)) return
+
+    const logId = await claim({
+      gymId: req.gymId,
+      dedupeKey: `groupjoin_${outcome}:email:${req.id}`,
+      type: `group_join_${outcome}`,
+      channel: 'email',
+      recipient: email!,
+      athleteId: req.athleteId,
+    })
+    if (!logId) return
+
+    const dashboardUrl = `${baseUrl()}/athlete/dashboard`
+    const coachNames = req.group.coaches.map((c) => c.trainer.user.name)
+
+    const tpl =
+      outcome === 'approved'
+        ? buildGroupJoinApprovedEmail({
+            firstName: req.athlete.firstName,
+            groupName: req.group.name,
+            whenHuman: weeklyWhen(req.group.dayOfWeek, req.group.startMinute),
+            coachLine: coachNames.length ? ` with ${coachNames.join(' and ')}` : '',
+            dashboardUrl,
+            logoUrl: process.env.EMAIL_LOGO_URL,
+            heroImageUrl: process.env.EMAIL_HERO_URL,
+          })
+        : buildGroupJoinDeclinedEmail({
+            firstName: req.athlete.firstName,
+            groupName: req.group.name,
+            reason: req.declineReason,
+            dashboardUrl,
+            logoUrl: process.env.EMAIL_LOGO_URL,
+          })
+
+    const { delivered } = await sendEmail({
+      to: email!,
+      subject: tpl.subject,
+      text: tpl.text,
+      html: tpl.html,
+    })
+    await settle(logId, delivered ? 'sent' : 'failed')
+  } catch (err) {
+    console.error('[notify] notifyGroupJoinResolved failed', requestId, err)
   }
 }
