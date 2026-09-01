@@ -9,7 +9,11 @@ import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 
-const VISION_MODEL = 'claude-opus-4-7'
+// Sonnet reads handwriting well and costs a fraction of Opus. This route's
+// job is transcription — turning a photo of a notepad into plain English —
+// not reasoning, so the extra capability was going unused. If a genuinely
+// illegible note ever needs the bigger model, flip it here.
+const VISION_MODEL = 'claude-sonnet-4-6'
 
 function getAnthropic(): Anthropic {
   const apiKey = process.env.CLAUDE_KEY || process.env.ANTHROPIC_API_KEY

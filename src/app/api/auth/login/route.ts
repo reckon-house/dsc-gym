@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { login } from '@/lib/auth'
+import { checkRateLimit, clientIp, tooManyRequests, RULES } from '@/lib/rateLimit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Two buckets: the caller's address, and the account being tried. The
+    // first stops one machine hammering the form; the second stops a slow
+    // spray across many addresses against a single login.
+    const ip = clientIp(request)
+    const byIp = await checkRateLimit(RULES.login, ip)
+    if (!byIp.allowed) return tooManyRequests(byIp, 'sign-in attempts')
+    const byAccount = await checkRateLimit(RULES.login, `acct:${String(email).toLowerCase()}`)
+    if (!byAccount.allowed) return tooManyRequests(byAccount, 'sign-in attempts')
 
     const result = await login(email, password)
 

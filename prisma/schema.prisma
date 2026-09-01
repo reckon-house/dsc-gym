@@ -652,3 +652,21 @@ model RecoveryVisit {
   @@index([gymId, at])
   @@index([athleteId, at])
 }
+
+/// Fixed-window rate limiting, backed by the database we already run.
+///
+/// Serverless functions cannot count in memory — every instance starts at
+/// zero — so the counter has to live somewhere shared. Redis is the textbook
+/// answer; for a gym's login endpoint one indexed upsert per attempt on Neon
+/// is indistinguishable in practice and needs no new vendor. Swap for
+/// Upstash if this app ever sees real traffic.
+///
+/// `key` is "<bucket>:<subject>:<window-start>", e.g.
+/// "login:203.0.113.9:2026-08-30T17:05". Rows are pruned opportunistically.
+model RateLimit {
+  key       String   @id
+  count     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}

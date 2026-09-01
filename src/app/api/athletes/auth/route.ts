@@ -9,6 +9,7 @@ import { verifyPassword } from '@/lib/auth'
 import { normalizePhone } from '@/lib/phone'
 import { findLoginGroup } from '@/lib/athleteAuth'
 import { JWT_SECRET_RAW } from '@/lib/secrets'
+import { checkRateLimit, clientIp, tooManyRequests, RULES } from '@/lib/rateLimit'
 
 const JWT_SECRET = new TextEncoder().encode(
   JWT_SECRET_RAW
@@ -31,6 +32,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const ip = clientIp(request)
+    const byIp = await checkRateLimit(RULES.login, ip)
+    if (!byIp.allowed) return tooManyRequests(byIp, 'sign-in attempts')
+    const byAccount = await checkRateLimit(RULES.login, `acct:${identifier.toLowerCase().trim()}`)
+    if (!byAccount.allowed) return tooManyRequests(byAccount, 'sign-in attempts')
 
     // A family shares one mailbox, so this returns every kid on it.
     const family = await findLoginGroup(identifier)
