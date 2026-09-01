@@ -16,9 +16,10 @@ import { jwtVerify } from 'jose'
 import Image from 'next/image'
 import { db } from '@/lib/db'
 import { isAllowedRedirectUri } from '@/lib/oauth/util'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  JWT_SECRET_RAW
 )
 
 interface PageProps {

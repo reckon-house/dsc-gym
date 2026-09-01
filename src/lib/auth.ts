@@ -3,9 +3,10 @@ import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { db } from './db'
 import { randomBytes } from 'crypto'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  JWT_SECRET_RAW
 )
 
 export interface SessionUser {

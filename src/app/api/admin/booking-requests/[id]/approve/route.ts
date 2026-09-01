@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 import { getGymTimezone, validateBooking } from '@/lib/scheduling/engine'
 import { formatInZone, formatHuman } from '@/lib/scheduling/timezone'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
@@ -19,7 +20,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const userId = request.headers.get('x-user-id') || null
+  // Middleware only role-checks paths under /admin, and this lives under
+  // /api/admin — so without this, any signed-in trainer could approve or
+  // decline bookings for the whole gym. Every other /api/admin route checks
+  // itself; these three were the exception.
+  const staff = await getSession()
+  if (!staff || staff.role !== 'ADMIN') {
+    return NextResponse.json(
+      { success: false, error: 'Only an admin can act on booking requests.' },
+      { status: staff ? 403 : 401 }
+    )
+  }
+  const userId = staff.userId
 
   const req = await db.bookingRequest.findUnique({ where: { id } })
   if (!req) {

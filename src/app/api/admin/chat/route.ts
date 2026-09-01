@@ -27,7 +27,10 @@ const MODEL_ID = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
 // propose_booking, plus athlete/trainer lookups and the occasional
 // add_athlete. 50 is comfortably above any realistic bulk and the
 // time guard below kicks in first anyway.
-const MAX_TOOL_ROUNDS = 50
+// Bounds a runaway tool loop. 50 was high enough to be no bound at all — a
+// model stuck re-listing the same week could make 50 paid calls before the
+// wall clock intervened. A real scheduling turn is 2-6 rounds.
+const MAX_TOOL_ROUNDS = 12
 
 // Stop looping ~20s before Vercel's hard kill so we have time to ask
 // the model for a clean wrap-up summary instead of dying mid-loop.
@@ -208,6 +211,31 @@ function sseChunk(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
 }
 
+/**
+ * Put a cache breakpoint on the last content block of the last message.
+ *
+ * Returns a shallow copy — the in-memory `messages` array is appended to
+ * across tool rounds and must not carry stale cache markers forward.
+ */
+function withCachedHistory(
+  msgs: Anthropic.Messages.MessageParam[]
+): Anthropic.Messages.MessageParam[] {
+  if (msgs.length === 0) return msgs
+  const out = msgs.slice()
+  const last = out[out.length - 1]
+  const content = Array.isArray(last.content)
+    ? last.content
+    : [{ type: 'text' as const, text: String(last.content) }]
+  if (content.length === 0) return msgs
+  const blocks = content.slice()
+  blocks[blocks.length - 1] = {
+    ...(blocks[blocks.length - 1] as Anthropic.Messages.ContentBlockParam),
+    cache_control: { type: 'ephemeral' },
+  } as Anthropic.Messages.ContentBlockParam
+  out[out.length - 1] = { ...last, content: blocks }
+  return out
+}
+
 export async function POST(request: NextRequest) {
   // Auth + setup happens synchronously before we open the stream so we
   // can return a plain JSON error if something is wrong with the request
@@ -347,7 +375,13 @@ export async function POST(request: NextRequest) {
               { type: 'text', text: dynamicContext },
             ],
             tools: SCHEDULING_TOOLS,
-            messages: messages as Anthropic.Messages.MessageParam[],
+            // Cache the conversation too, not just the static prefix. Each
+            // turn's history is a strict prefix of the next turn's, so marking
+            // the final message lets the API serve everything before it from
+            // cache at a tenth of the input price. Without this a long thread
+            // re-bills its whole history every message — a live draft was
+            // replaying ~37k tokens per turn, growing with every exchange.
+            messages: withCachedHistory(messages as Anthropic.Messages.MessageParam[]),
           })
 
           // Pipe stream events to the client. Text deltas land as

@@ -8,9 +8,10 @@ import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth'
 import { normalizePhone } from '@/lib/phone'
 import { findLoginGroup } from '@/lib/athleteAuth'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  JWT_SECRET_RAW
 )
 
 // Accept either an email or a phone number as the identifier. We sniff

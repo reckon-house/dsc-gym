@@ -13,6 +13,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { db } from '@/lib/db'
 import { sendEmail, buildBlastEmail } from '@/lib/email'
 import { isDeliverableEmail } from '@/lib/notify'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 export type AudienceSpec =
   | { kind: 'all' }
@@ -34,7 +35,7 @@ export interface ResolvedAudience {
   excluded: { optedOut: number; badEmail: number; noBirthdate: number }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+const JWT_SECRET = JWT_SECRET_RAW
 
 /** Stateless, so unsubscribe needs no token table and never expires. */
 export function unsubscribeToken(athleteId: string): string {
