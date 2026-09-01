@@ -5,7 +5,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
-import { materializeGroup } from '@/lib/scheduling/engine'
+import { materializeGroup, addSessionAttendee, removeSessionAttendee } from '@/lib/scheduling/engine'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved } from '@/lib/notify'
@@ -558,6 +558,32 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         description: { type: 'string' },
       },
       required: ['groupId'],
+    },
+  },
+  {
+    name: 'add_athlete_to_session',
+    description:
+      "Add an athlete to ONE session that already exists, without touching the group roster or any other week. This is the right tool when someone wants to join a single class, or attend only some of a group's sessions — NOT propose_booking, which tries to create a second session at the same time and reports the coach as already busy. Use list_sessions first to get the sessionId.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        athleteId: { type: 'string' },
+      },
+      required: ['sessionId', 'athleteId'],
+    },
+  },
+  {
+    name: 'remove_athlete_from_session',
+    description:
+      'Take one athlete out of one session, leaving the rest of the group and every other week untouched. Use this for "he is out this Thursday only".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        athleteId: { type: 'string' },
+      },
+      required: ['sessionId', 'athleteId'],
     },
   },
   {
@@ -1882,6 +1908,26 @@ export async function dispatchTool(
         // so this no longer only affects the next materialization.
         note: 'Added athletes were also put into this group\'s upcoming sessions. Removed athletes were taken out of them.',
         ...(addedReport.length ? { warnings: addedReport } : {}),
+      }
+    }
+
+    case 'add_athlete_to_session': {
+      const r = await addSessionAttendee(gymId, String(input.sessionId), String(input.athleteId))
+      if (!r.ok) return { error: r.error }
+      return {
+        ok: true,
+        attendees: r.attendees?.map((a) => `${a.firstName} ${a.lastName}`) ?? [],
+        note: 'Only this session changed. The group roster and other weeks are untouched.',
+      }
+    }
+
+    case 'remove_athlete_from_session': {
+      const r = await removeSessionAttendee(gymId, String(input.sessionId), String(input.athleteId))
+      if (!r.ok) return { error: r.error }
+      return {
+        ok: true,
+        attendees: r.attendees?.map((a) => `${a.firstName} ${a.lastName}`) ?? [],
+        note: 'Only this session changed.',
       }
     }
 

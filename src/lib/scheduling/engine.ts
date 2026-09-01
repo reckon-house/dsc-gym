@@ -904,3 +904,129 @@ export async function materializeGroup(
 
   return { created, skipped }
 }
+
+export interface AttendeeChangeResult {
+  ok: boolean
+  error?: string
+  attendees?: { id: string; firstName: string; lastName: string }[]
+}
+
+/**
+ * Put an athlete into a session that already exists.
+ *
+ * This is the capability the app was missing, and its absence caused two
+ * separate complaints that looked unrelated:
+ *
+ *   "It won't let me add athletes to an already-made group — it says I don't
+ *    have that time available."
+ *   "It won't let me book an athlete for just 1 or 2 of the week's sessions."
+ *
+ * Both happened because the only ways to get an athlete onto the floor were
+ * joining a group (all of its sessions, forever) or booking a NEW session at
+ * that time — and a new session collides with the group's own, so the coach
+ * reads as "already with" somebody. The fix is to treat "join this session" as
+ * its own operation rather than as a booking.
+ *
+ * Validation is deliberately narrow. It checks only what actually matters for
+ * an extra body in a session that is already happening: is this athlete
+ * somewhere ELSE at that moment. It does NOT re-check the coach, the floor cap
+ * or the session length, because the session already exists and passed those
+ * when it was created — re-running them is what produced the false conflict.
+ */
+export async function addSessionAttendee(
+  gymId: string,
+  sessionId: string,
+  athleteId: string
+): Promise<AttendeeChangeResult> {
+  const session = await db.session.findUnique({ where: { id: sessionId } })
+  if (!session || session.gymId !== gymId) return { ok: false, error: 'Session not found.' }
+  if (session.cancelled) return { ok: false, error: 'That session is cancelled.' }
+
+  const athlete = await db.athlete.findUnique({ where: { id: athleteId } })
+  if (!athlete || athlete.gymId !== gymId) return { ok: false, error: 'Athlete not found.' }
+  if (athlete.archived) {
+    return { ok: false, error: `${athlete.firstName} ${athlete.lastName} is archived.` }
+  }
+
+  const already = await db.sessionAttendee.findUnique({
+    where: { sessionId_athleteId: { sessionId, athleteId } },
+  })
+  if (already || session.athleteId === athleteId) {
+    return { ok: true, attendees: await rosterOf(sessionId) }
+  }
+
+  // The one real conflict: booked elsewhere at the same moment.
+  const start = session.scheduledAt
+  const end = new Date(start.getTime() + session.duration * 60_000)
+  const clashes = await db.session.findMany({
+    where: {
+      gymId,
+      cancelled: false,
+      id: { not: sessionId },
+      OR: [{ athleteId }, { attendees: { some: { athleteId } } }],
+      scheduledAt: { lt: end },
+    },
+    include: { trainer: { include: { user: { select: { name: true } } } } },
+  })
+  const zone = await getGymTimezone(gymId)
+  for (const c of clashes) {
+    const cEnd = new Date(c.scheduledAt.getTime() + c.duration * 60_000)
+    if (cEnd > start) {
+      return {
+        ok: false,
+        error: `${athlete.firstName} is already with ${c.trainer.user.name} at ${formatTime(c.scheduledAt, zone)}.`,
+      }
+    }
+  }
+
+  await db.sessionAttendee.create({ data: { sessionId, athleteId } })
+  return { ok: true, attendees: await rosterOf(sessionId) }
+}
+
+/**
+ * Take an athlete out of one session, leaving the rest alone.
+ *
+ * The primary attendee cannot be removed this way — Session.athleteId is a
+ * required column, so a session must always have someone. Reassign or cancel
+ * it instead, and say so rather than failing opaquely.
+ */
+export async function removeSessionAttendee(
+  gymId: string,
+  sessionId: string,
+  athleteId: string
+): Promise<AttendeeChangeResult> {
+  const session = await db.session.findUnique({
+    where: { id: sessionId },
+    include: { attendees: true },
+  })
+  if (!session || session.gymId !== gymId) return { ok: false, error: 'Session not found.' }
+
+  if (session.athleteId === athleteId) {
+    const others = session.attendees.filter((a) => a.athleteId !== athleteId)
+    if (others.length === 0) {
+      return {
+        ok: false,
+        error: 'That is the only athlete in this session — cancel the session instead.',
+      }
+    }
+    // Hand the primary slot to someone else who is already attending, so the
+    // session stays valid rather than being orphaned.
+    await db.$transaction([
+      db.session.update({ where: { id: sessionId }, data: { athleteId: others[0].athleteId } }),
+      db.sessionAttendee.deleteMany({ where: { sessionId, athleteId } }),
+    ])
+    return { ok: true, attendees: await rosterOf(sessionId) }
+  }
+
+  await db.sessionAttendee.deleteMany({ where: { sessionId, athleteId } })
+  return { ok: true, attendees: await rosterOf(sessionId) }
+}
+
+async function rosterOf(sessionId: string) {
+  const rows = await db.sessionAttendee.findMany({
+    where: { sessionId },
+    include: { athlete: { select: { id: true, firstName: true, lastName: true } } },
+    orderBy: { createdAt: 'asc' },
+  })
+  return rows.map((r) => r.athlete)
+}

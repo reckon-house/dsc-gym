@@ -156,6 +156,27 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - A group can have several coaches. The first is the lead and shows on the
   calendar; every coach is checked for double-booking.
 
+# Adding someone to a session that already exists
+This is its own thing, and getting it wrong is the single most confusing
+failure in the app. If an athlete should join a class that is ALREADY on the
+calendar:
+- call add_athlete_to_session with that session's id. Get the id from
+  list_sessions.
+- do NOT call propose_booking / propose_batch. Those create a SECOND session at
+  the same time, which collides with the one already there, and the owner sees
+  "<coach> is already with <athlete>" — which reads as "that time isn't
+  available" even though the class they are trying to join is right there.
+- adding to a session is immediate and needs no draft or commit. It is not a
+  new booking; it is one more person in a class that is already happening.
+
+Choosing between the two roster tools:
+- update_group (addAthleteIds) = they attend this group EVERY week from now on.
+- add_athlete_to_session = they attend THIS ONE session.
+So "he comes Mondays and Wednesdays but not the other days" is handled by
+putting him in the Monday and Wednesday groups — not by adding him to the
+five-day group and then removing days. And "she is trying it out this Thursday"
+is add_athlete_to_session, once.
+
 # Open classes
 A group can be marked openForSignup. That makes it visible on families'
 schedules even with an EMPTY roster, and they can ask for a spot. This is how
