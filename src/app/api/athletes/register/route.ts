@@ -9,12 +9,18 @@ import {
 } from '@/lib/email'
 import { normalizePhone } from '@/lib/phone'
 import { publicBaseUrl } from '@/lib/oauth/util'
+import { checkRateLimit, clientIp, tooManyRequests, RULES } from '@/lib/rateLimit'
 
 // POST /api/athletes/register - Public athlete self-registration.
 // Creates an unverified athlete and sends a verification email.
 // Login is blocked until the email is verified.
 export async function POST(request: NextRequest) {
   try {
+    // Every successful call creates an account and sends an email, so this is
+    // the spam surface. A real family registering three kids fits comfortably.
+    const rl = await checkRateLimit(RULES.register, clientIp(request))
+    if (!rl.allowed) return tooManyRequests(rl, 'sign-ups')
+
     const body = await request.json()
     const { firstName, lastName, email, phone, password, legalName, birthdate } = body
 
