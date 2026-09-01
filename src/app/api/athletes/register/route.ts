@@ -105,6 +105,10 @@ export async function POST(request: NextRequest) {
       joiningFamily = true
     }
 
+    // True only when this athlete is joining a mailbox that is already
+    // confirmed; drives both the stored token and whether we email at all.
+    const alreadyVerified = joiningFamily && Boolean(existing!.emailVerified)
+
     const passwordHash = await hashPassword(password)
     const token = generateVerificationToken()
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
@@ -120,9 +124,17 @@ export async function POST(request: NextRequest) {
         birthdate: parsedBirthdate,
         passwordHash,
         trainerId: null,
-        emailVerified: joiningFamily ? existing!.emailVerified : false,
-        emailVerificationToken: joiningFamily ? null : token,
-        emailVerificationExpiresAt: joiningFamily ? null : expiresAt,
+        // A sibling joining an ALREADY-verified mailbox needs no verification —
+        // the parent proved they own it the first time.
+        //
+        // A sibling joining an unverified one gets a real token of their own.
+        // It previously got null while the email still shipped a link built
+        // from the generated token, so the second child's link pointed at a
+        // token stored nowhere and the parent was told "invalid or already
+        // used" for an account that was in fact fine.
+        emailVerified: alreadyVerified,
+        emailVerificationToken: alreadyVerified ? null : token,
+        emailVerificationExpiresAt: alreadyVerified ? null : expiresAt,
         // The "I have read and agree" checkbox on the registration form is
         // the formal sign event — record it here. (Submission is blocked
         // server-side without legalName, and client-side without the
@@ -161,16 +173,19 @@ export async function POST(request: NextRequest) {
     const logoUrl = process.env.EMAIL_LOGO_URL ?? `${base}/logo-mark.png`
     const heroImageUrl = process.env.EMAIL_HERO_URL ?? `${base}/email-hero.jpg`
 
-    const email_content = buildVerificationEmail({
-      firstName: athlete.firstName,
-      url: verificationUrl,
-      logoUrl,
-      heroImageUrl,
-    })
-    const emailResult = await sendEmail({
-      to: normalizedEmail,
-      ...email_content,
-    })
+    // Nothing to verify for a sibling on a confirmed mailbox — sending a link
+    // there is what produced the bogus "verification failed" page.
+    const emailResult = alreadyVerified
+      ? { delivered: true }
+      : await sendEmail({
+          to: normalizedEmail,
+          ...buildVerificationEmail({
+            firstName: athlete.firstName,
+            url: verificationUrl,
+            logoUrl,
+            heroImageUrl,
+          }),
+        })
 
     return NextResponse.json(
       {
@@ -184,8 +199,10 @@ export async function POST(request: NextRequest) {
         // In dev (no email service configured), expose the URL so the
         // user can click it directly. In prod with Resend wired up,
         // this still echoes but the real link is in the inbox.
-        verificationUrl: emailResult.delivered ? null : verificationUrl,
+        verificationUrl: alreadyVerified || emailResult.delivered ? null : verificationUrl,
         emailDelivered: emailResult.delivered,
+        // Lets the form say "you're all set" instead of "check your email".
+        alreadyVerified,
       },
       { status: 201 }
     )

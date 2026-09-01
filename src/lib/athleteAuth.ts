@@ -62,11 +62,13 @@ export async function setFamilyPassword(email: string, passwordHash: string) {
 export async function markFamilyVerified(email: string) {
   return db.athlete.updateMany({
     where: { email: normalizeEmail(email) },
-    data: {
-      emailVerified: true,
-      emailVerificationToken: null,
-      emailVerificationExpiresAt: null,
-    },
+    // The token is deliberately KEPT. Nulling it meant a parent who clicked
+    // their link twice — or clicked the second child's link after the first —
+    // hit "invalid or already used", which reads like the signup failed. The
+    // verify route checks emailVerified before anything else, so a repeat
+    // click now lands on a calm "already confirmed" instead. A token that only
+    // re-verifies an already-verified account grants nothing.
+    data: { emailVerified: true },
   })
 }
 
