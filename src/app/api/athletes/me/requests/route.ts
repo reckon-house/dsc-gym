@@ -12,9 +12,10 @@ import { db } from '@/lib/db'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { formatHuman } from '@/lib/scheduling/timezone'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  JWT_SECRET_RAW
 )
 
 export async function GET() {

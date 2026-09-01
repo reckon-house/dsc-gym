@@ -11,9 +11,10 @@ import {
   isAllowedRedirectUri,
   randomToken,
 } from '@/lib/oauth/util'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+  JWT_SECRET_RAW
 )
 
 function redirectWithParams(

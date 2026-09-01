@@ -11,6 +11,7 @@
 
 import { db } from '@/lib/db'
 import { normalizePhone } from '@/lib/phone'
+import { JWT_SECRET_RAW } from '@/lib/secrets'
 
 export function normalizeEmail(raw: string): string {
   return raw.toLowerCase().trim()
@@ -85,7 +86,7 @@ export async function readAthleteSession(): Promise<
   const { cookies } = await import('next/headers')
   const { jwtVerify } = await import('jose')
   const secret = new TextEncoder().encode(
-    process.env.JWT_SECRET || 'fallback-secret-change-in-production'
+    JWT_SECRET_RAW
   )
 
   const token = (await cookies()).get('athleteSession')?.value
