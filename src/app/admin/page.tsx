@@ -29,6 +29,17 @@ interface TrainerOption {
   user: { name: string }
 }
 
+interface ClassRequest {
+  id: string
+  athleteName: string
+  groupName: string
+  dayOfWeek: number | null
+  startMinute: number | null
+  enrolled: number
+  capacity: number | null
+  note: string | null
+}
+
 interface BookingRequest {
   id: string
   athleteName: string
@@ -72,6 +83,7 @@ export default function AdminHome() {
   const [unassigned, setUnassigned] = useState<UnassignedAthlete[]>([])
   const [trainers, setTrainers] = useState<TrainerOption[]>([])
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([])
+  const [classRequests, setClassRequests] = useState<ClassRequest[]>([])
   const [extraVisits, setExtraVisits] = useState<
     { athleteId: string; name: string; extraVisits: number }[]
   >([])
@@ -84,18 +96,20 @@ export default function AdminHome() {
   >(null)
 
   const loadAuxiliary = useCallback(async () => {
-    const [t, w, u, br, ev] = await Promise.all([
+    const [t, w, u, br, ev, gr] = await Promise.all([
       fetch('/api/trainers').then((r) => r.json()),
       fetch('/api/walkins').then((r) => r.json()),
       fetch('/api/athletes?unassigned=true').then((r) => r.json()),
       fetch('/api/admin/booking-requests').then((r) => r.json()),
       fetch('/api/admin/attendance/extra?days=30').then((r) => r.json()),
+      fetch('/api/admin/group-requests').then((r) => r.json()),
     ])
     if (t.success) setTrainers(t.data)
     if (w.success) setWalkIns(w.data)
     if (u.success) setUnassigned(u.data)
     if (br.success) setBookingRequests(br.data)
     if (ev.success) setExtraVisits(ev.data.rows)
+    if (gr.success) setClassRequests(gr.data)
   }, [])
 
   function summarizeRequest(r: BookingRequest): RequestSummary {
@@ -201,6 +215,24 @@ export default function AdminHome() {
     setAssigning(null)
   }
 
+  async function resolveClassRequest(id: string, action: 'approve' | 'decline') {
+    setResolvingReq(id)
+    const res = await fetch(`/api/admin/group-requests/${id}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await res.json()
+    setResolvingReq(null)
+    if (!data.success) {
+      // A full class or an archived athlete leaves the request pending on
+      // purpose, so say why rather than silently doing nothing.
+      alert(data.error ?? 'Could not update that request.')
+      return
+    }
+    await loadAuxiliary()
+  }
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
@@ -233,8 +265,17 @@ export default function AdminHome() {
       {(walkIns.length > 0 ||
         unassigned.length > 0 ||
         bookingRequests.length > 0 ||
+        classRequests.length > 0 ||
         extraVisits.length > 0) && (
         <div className="px-4 space-y-2 pb-2">
+          {classRequests.length > 0 && (
+            <ClassRequestsBox
+              requests={classRequests}
+              onApprove={(id) => resolveClassRequest(id, 'approve')}
+              onDecline={(id) => resolveClassRequest(id, 'decline')}
+              resolving={resolvingReq}
+            />
+          )}
           {bookingRequests.length > 0 && (
             <BookingRequestsBox
               requests={bookingRequests}
@@ -512,6 +553,90 @@ function AlertBox({
                 </option>
               ))}
             </select>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const REQ_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function reqTime(m: number): string {
+  const h = Math.floor(m / 60)
+  const mm = String(m % 60).padStart(2, '0')
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mm}${ampm}`
+}
+
+/**
+ * "Can my kid join this class?" — the open-groups counterpart to
+ * BookingRequestsBox. Approving adds them to the roster AND to every future
+ * session the group already has, so there's no second step to forget.
+ */
+function ClassRequestsBox({
+  requests,
+  onApprove,
+  onDecline,
+  resolving,
+}: {
+  requests: ClassRequest[]
+  onApprove: (id: string) => void
+  onDecline: (id: string) => void
+  resolving: string | null
+}) {
+  return (
+    <div className="px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200 max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-600" />
+        <span className="dsc-label text-emerald-900">
+          Class requests · {requests.length}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {requests.map((r) => (
+          <div
+            key={r.id}
+            className="bg-white rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center gap-2"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-black text-sm">
+                <span className="font-medium">{r.athleteName}</span>
+                <span className="text-black/50"> wants a spot in </span>
+                <span className="font-medium">{r.groupName}</span>
+              </div>
+              <div className="text-xs text-black/60 mt-0.5">
+                {r.dayOfWeek !== null && r.startMinute !== null
+                  ? `${REQ_DAYS[r.dayOfWeek]}s · ${reqTime(r.startMinute)}`
+                  : 'No standing time'}
+                {' · '}
+                {r.capacity !== null
+                  ? `${r.enrolled}/${r.capacity} spots taken`
+                  : `${r.enrolled} enrolled`}
+              </div>
+              {r.note && (
+                <div className="text-xs text-black/70 mt-1 italic truncate">
+                  &ldquo;{r.note}&rdquo;
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => onApprove(r.id)}
+                disabled={resolving === r.id}
+                className="h-8 px-3 bg-black text-white text-xs rounded-full dsc-headline disabled:opacity-40"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => onDecline(r.id)}
+                disabled={resolving === r.id}
+                className="h-8 px-3 border border-black/20 text-black/70 text-xs rounded-full disabled:opacity-40"
+              >
+                Decline
+              </button>
+            </div>
           </div>
         ))}
       </div>

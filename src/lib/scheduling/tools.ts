@@ -7,6 +7,8 @@ import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
 import { materializeGroup } from '@/lib/scheduling/engine'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
+import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
+import { notifyGroupJoinResolved } from '@/lib/notify'
 import { hashPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -521,6 +523,13 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         time: { type: 'string', description: '"HH:MM" 24h, gym-local.' },
         duration: { type: 'number', description: 'Defaults to 60.' },
         notes: { type: 'string' },
+        openForSignup: {
+          type: 'boolean',
+          description:
+            'Show this class to families on their schedule so they can ask for a spot, even with an empty roster. Use this for a class being opened up rather than a fixed private group.',
+        },
+        capacity: { type: 'number', description: 'Max athletes. Omit for no limit.' },
+        description: { type: 'string', description: 'One line for parents: who it is for.' },
       },
       required: ['name'],
     },
@@ -544,8 +553,40 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         duration: { type: 'number' },
         active: { type: 'boolean' },
         notes: { type: 'string' },
+        openForSignup: { type: 'boolean' },
+        capacity: { type: 'number', description: 'Max athletes. Pass 0 or null to clear.' },
+        description: { type: 'string' },
       },
       required: ['groupId'],
+    },
+  },
+  {
+    name: 'list_class_requests',
+    description:
+      'Families waiting on a spot in an open class. These are requests, not bookings — nothing is on the calendar until approved.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'approve_class_request',
+    description:
+      "Give a family the spot they asked for. Adds the athlete to the group's roster, slots them into every future session the group already has, and puts the group on the calendar if it had nothing yet. Refuses if the class filled up in the meantime.",
+    input_schema: {
+      type: 'object',
+      properties: { requestId: { type: 'string' } },
+      required: ['requestId'],
+    },
+  },
+  {
+    name: 'decline_class_request',
+    description:
+      'Turn down a request for a spot. The reason is emailed to the family verbatim, so write it for them to read.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        requestId: { type: 'string' },
+        reason: { type: 'string' },
+      },
+      required: ['requestId'],
     },
   },
   {
@@ -1730,6 +1771,12 @@ export async function dispatchTool(
             startMinute,
             duration: input.duration ? Number(input.duration) : 60,
             notes: input.notes ? String(input.notes) : null,
+            openForSignup: Boolean(input.openForSignup),
+            capacity:
+              input.capacity === undefined || input.capacity === null
+                ? null
+                : Number(input.capacity),
+            description: input.description ? String(input.description) : null,
             members: { create: athleteIds.map((athleteId) => ({ athleteId })) },
             coaches: {
               create: coachIds.map((trainerId, i) => ({ trainerId, isLead: i === 0 })),
@@ -1773,20 +1820,28 @@ export async function dispatchTool(
       if (input.duration !== undefined) data.duration = Number(input.duration)
       if (input.active !== undefined) data.active = Boolean(input.active)
       if (input.notes !== undefined) data.notes = input.notes ? String(input.notes) : null
+      if (input.openForSignup !== undefined) data.openForSignup = Boolean(input.openForSignup)
+      if (input.description !== undefined)
+        data.description = input.description ? String(input.description) : null
+      if (input.capacity !== undefined) {
+        // 0 and null both mean "no limit" here; a zero-capacity class nobody
+        // can join is never what someone is asking for.
+        data.capacity =
+          input.capacity === null || Number(input.capacity) === 0 ? null : Number(input.capacity)
+      }
 
       if (Object.keys(data).length) await db.group.update({ where: { id: groupId }, data })
 
+      // Routed through addAthleteToGroup, not a bare roster insert: adding a
+      // kid has to put them in the group's existing future sessions too, or
+      // they sit on the roster with nothing on their calendar.
+      const addedReport: string[] = []
       for (const athleteId of (input.addAthleteIds as string[] | undefined) ?? []) {
-        await db.groupMember.upsert({
-          where: { groupId_athleteId: { groupId, athleteId: String(athleteId) } },
-          create: { groupId, athleteId: String(athleteId) },
-          update: {},
-        })
+        const r = await addAthleteToGroup(groupId, String(athleteId))
+        if (!r.added && r.reason) addedReport.push(r.reason)
       }
-      if (Array.isArray(input.removeAthleteIds) && input.removeAthleteIds.length) {
-        await db.groupMember.deleteMany({
-          where: { groupId, athleteId: { in: (input.removeAthleteIds as string[]).map(String) } },
-        })
+      for (const athleteId of (input.removeAthleteIds as string[] | undefined) ?? []) {
+        await removeAthleteFromGroup(groupId, String(athleteId))
       }
       for (const trainerId of (input.addCoachIds as string[] | undefined) ?? []) {
         await db.groupCoach.upsert({
@@ -1820,8 +1875,81 @@ export async function dispatchTool(
         name: after?.name,
         members: after?.members.map((m) => `${m.athlete.firstName} ${m.athlete.lastName}`) ?? [],
         coaches: after?.coaches.map((c) => c.trainer.user.name) ?? [],
-        note: 'Roster changes affect future materializations, not sessions already on the calendar.',
+        // Anyone added is put into the group's existing future sessions too,
+        // so this no longer only affects the next materialization.
+        note: 'Added athletes were also put into this group\'s upcoming sessions. Removed athletes were taken out of them.',
+        ...(addedReport.length ? { warnings: addedReport } : {}),
       }
+    }
+
+    case 'list_class_requests': {
+      const rows = await db.groupJoinRequest.findMany({
+        where: { gymId, status: 'pending' },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          athlete: { select: { firstName: true, lastName: true } },
+          group: {
+            select: {
+              name: true,
+              capacity: true,
+              members: { select: { athlete: { select: { archived: true } } } },
+            },
+          },
+        },
+      })
+      return {
+        requests: rows.map((r) => {
+          const enrolled = r.group.members.filter((m) => !m.athlete.archived).length
+          return {
+            requestId: r.id,
+            athlete: `${r.athlete.firstName} ${r.athlete.lastName}`,
+            group: r.group.name,
+            enrolled,
+            capacity: r.group.capacity,
+            note: r.note,
+            askedAt: r.createdAt.toISOString(),
+          }
+        }),
+      }
+    }
+
+    case 'approve_class_request': {
+      const requestId = String(input.requestId)
+      const req = await db.groupJoinRequest.findUnique({ where: { id: requestId } })
+      if (!req || req.gymId !== gymId) return { error: 'Request not found.' }
+      if (req.status !== 'pending') return { error: `That request is already ${req.status}.` }
+
+      const result = await addAthleteToGroup(req.groupId, req.athleteId)
+      if (!result.added) {
+        // Left pending: a full class is something to resolve, not a decision.
+        return { error: result.reason ?? 'Could not add them.' }
+      }
+      await db.groupJoinRequest.update({
+        where: { id: requestId },
+        data: { status: 'approved', resolvedAt: new Date(), resolvedBy: 'chat' },
+      })
+      void notifyGroupJoinResolved(requestId, 'approved')
+      return {
+        ok: true,
+        joinedExistingSessions: result.joinedSessions,
+        newSessionsCreated: result.createdSessions,
+      }
+    }
+
+    case 'decline_class_request': {
+      const requestId = String(input.requestId)
+      const declined = await db.groupJoinRequest.updateMany({
+        where: { id: requestId, gymId, status: 'pending' },
+        data: {
+          status: 'declined',
+          declineReason: input.reason ? String(input.reason) : null,
+          resolvedAt: new Date(),
+          resolvedBy: 'chat',
+        },
+      })
+      if (declined.count !== 1) return { error: 'That request is no longer pending.' }
+      void notifyGroupJoinResolved(requestId, 'declined')
+      return { ok: true }
     }
 
     case 'materialize_group': {

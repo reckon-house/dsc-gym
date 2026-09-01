@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 
 export async function GET(
   _request: NextRequest,
@@ -65,6 +66,15 @@ export async function PATCH(
   if (body.duration !== undefined) data.duration = Number(body.duration)
   if (body.active !== undefined) data.active = Boolean(body.active)
   if (body.notes !== undefined) data.notes = body.notes ? String(body.notes) : null
+  if (body.openForSignup !== undefined) data.openForSignup = Boolean(body.openForSignup)
+  if (body.description !== undefined)
+    data.description = body.description ? String(body.description) : null
+  if (body.capacity !== undefined) {
+    // Null and '' both mean "no limit"; 0 would mean nobody can join, which is
+    // never what someone means when they clear the field.
+    data.capacity =
+      body.capacity === null || body.capacity === '' ? null : Number(body.capacity)
+  }
 
   try {
     await db.$transaction(async (tx) => {
@@ -74,21 +84,7 @@ export async function PATCH(
 
       // Roster edits are expressed as add/remove lists rather than a full
       // replacement, so two admins editing at once can't silently wipe each
-      // other's changes.
-      if (Array.isArray(body.addMemberIds) && body.addMemberIds.length) {
-        for (const athleteId of body.addMemberIds.map(String)) {
-          await tx.groupMember.upsert({
-            where: { groupId_athleteId: { groupId: id, athleteId } },
-            create: { groupId: id, athleteId },
-            update: {},
-          })
-        }
-      }
-      if (Array.isArray(body.removeMemberIds) && body.removeMemberIds.length) {
-        await tx.groupMember.deleteMany({
-          where: { groupId: id, athleteId: { in: body.removeMemberIds.map(String) } },
-        })
-      }
+      // other's changes. They are applied AFTER this transaction — see below.
       if (Array.isArray(body.addCoachIds) && body.addCoachIds.length) {
         for (const trainerId of body.addCoachIds.map(String)) {
           await tx.groupCoach.upsert({
@@ -125,6 +121,20 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: 'An error occurred' }, { status: 500 })
   }
 
+  // Roster changes run outside the transaction on purpose: adding an athlete
+  // also slots them into the group's existing future sessions and may
+  // materialize the group, which is far more than a row insert and must behave
+  // identically here, in the chat tool, and on request approval. One helper
+  // owns all three.
+  const warnings: string[] = []
+  for (const athleteId of (body.addMemberIds as string[] | undefined) ?? []) {
+    const r = await addAthleteToGroup(id, String(athleteId))
+    if (!r.added && r.reason) warnings.push(r.reason)
+  }
+  for (const athleteId of (body.removeMemberIds as string[] | undefined) ?? []) {
+    await removeAthleteFromGroup(id, String(athleteId))
+  }
+
   const updated = await db.group.findUnique({
     where: { id },
     include: {
@@ -132,7 +142,7 @@ export async function PATCH(
       coaches: { include: { trainer: { select: { id: true, user: { select: { name: true } } } } } },
     },
   })
-  return NextResponse.json({ success: true, data: updated })
+  return NextResponse.json({ success: true, data: updated, warnings })
 }
 
 export async function DELETE(
