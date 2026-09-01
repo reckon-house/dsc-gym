@@ -9,7 +9,7 @@ import { materializeGroup } from '@/lib/scheduling/engine'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved } from '@/lib/notify'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, MIN_PASSWORD_LENGTH, generateTempPassword } from '@/lib/auth'
 import {
   addProposedChange,
   commitAllPending,
@@ -1347,10 +1347,13 @@ export async function dispatchTool(
           existingUserId: existing.id,
         }
       }
+      // A shared literal default is how every trainer ended up with the same
+      // password. Generate one instead, and hand it back so the owner can pass
+      // it on; the new-password policy rejects the old literal anyway.
       const tempPassword =
-        typeof input.tempPassword === 'string' && input.tempPassword.length >= 6
+        typeof input.tempPassword === 'string' && input.tempPassword.length >= MIN_PASSWORD_LENGTH
           ? input.tempPassword
-          : 'trainer123'
+          : generateTempPassword()
       const passwordHash = await hashPassword(tempPassword)
       const user = await db.user.create({
         data: {
