@@ -81,6 +81,8 @@ export interface ProposedChange {
   existingSessionId?: string
   notes?: string
   conflictReason?: string | null
+  /** Deliberate backfill of something that already happened. */
+  allowPast?: boolean
 }
 
 export interface SlotSuggestion {

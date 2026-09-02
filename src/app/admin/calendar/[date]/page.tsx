@@ -123,7 +123,25 @@ export default function CalendarDayDetail() {
     if (filterTrainerId) qs.set('trainerId', filterTrainerId)
     const res = await fetch(`/api/sessions?${qs.toString()}`)
     const data = await res.json()
-    if (data.success) setSessions(data.data)
+    if (!data.success) return
+    setSessions(data.data)
+    // Re-point the open sheet at the row we just refetched. `draft` was a
+    // snapshot taken when the session was tapped, so without this an edit
+    // updated the list underneath while the sheet kept showing the roster as
+    // it was on open — reopening it appeared to lose the change.
+    setDraft((prev) => {
+      if (!prev?.id) return prev
+      const fresh = (data.data as DaySession[]).find((x) => x.id === prev.id)
+      if (!fresh) return prev
+      return {
+        id: fresh.id,
+        trainerId: fresh.trainerId,
+        athleteId: fresh.athleteId,
+        scheduledAt: fresh.scheduledAt,
+        duration: fresh.duration,
+        attendees: fresh.attendees,
+      }
+    })
   }, [bounds, filterTrainerId])
 
   const loadMeetings = useCallback(async () => {

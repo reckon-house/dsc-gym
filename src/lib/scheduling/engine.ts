@@ -65,10 +65,24 @@ export async function getGymTimezone(gymId: string): Promise<string> {
   return gym?.timezone ?? 'America/Chicago'
 }
 
+export interface ValidateOptions {
+  /**
+   * Permit a start time in the past.
+   *
+   * Staff routinely record what already happened — a walk-in on Tuesday
+   * entered on Thursday, a class nobody logged at the time. Refusing that
+   * outright made the calendar unable to describe the gym's own history, and
+   * attendance and recovery charges are built on those rows. Still opt-in, so
+   * a mistyped year is caught rather than silently booked.
+   */
+  allowPast?: boolean
+}
+
 export async function validateBooking(
   gymId: string,
   input: BookingInput,
-  ignoreSessionId?: string
+  ignoreSessionId?: string,
+  opts: ValidateOptions = {}
 ): Promise<ValidationResult> {
   const conflicts: Conflict[] = []
   const config = await loadConfig(gymId)
@@ -76,8 +90,8 @@ export async function validateBooking(
   const start = new Date(input.scheduledAt)
   const end = new Date(start.getTime() + input.duration * 60_000)
 
-  // 0. Past time.
-  if (start.getTime() < Date.now() - 60_000) {
+  // 0. Past time — unless the caller is deliberately backfilling.
+  if (!opts.allowPast && start.getTime() < Date.now() - 60_000) {
     conflicts.push({
       kind: 'PAST_TIME',
       message: `${formatHuman(start, zone)} is in the past.`,
@@ -261,7 +275,8 @@ export async function validateBooking(
 export async function validateGroupBooking(
   gymId: string,
   input: GroupBookingInput,
-  ignoreSessionId?: string
+  ignoreSessionId?: string,
+  opts: ValidateOptions = {}
 ): Promise<ValidationResult> {
   if (input.athleteIds.length === 0) {
     return {
@@ -282,7 +297,8 @@ export async function validateGroupBooking(
         scheduledAt: input.scheduledAt,
         duration: input.duration,
       },
-      ignoreSessionId
+      ignoreSessionId,
+      opts
     )
     conflicts.push(...slotCheck.conflicts)
   }
@@ -494,6 +510,7 @@ export async function addProposedChange(
       existingSessionId: change.existingSessionId,
       notes: change.notes,
       conflictReason: change.conflictReason ?? null,
+      allowPast: change.allowPast ?? false,
     },
   })
   await db.draftSchedule.update({
@@ -538,19 +555,29 @@ export async function commitChange(
 
     const validation =
       athleteIds.length > 1 || coachIds.length > 1
-        ? await validateGroupBooking(gymId, {
-            trainerId: p.trainerId,
-            athleteIds,
-            coachIds,
-            scheduledAt: p.scheduledAt,
-            duration: p.duration,
-          })
-        : await validateBooking(gymId, {
-            trainerId: p.trainerId,
-            athleteId: p.athleteId,
-            scheduledAt: p.scheduledAt,
-            duration: p.duration,
-          })
+        ? await validateGroupBooking(
+            gymId,
+            {
+              trainerId: p.trainerId,
+              athleteIds,
+              coachIds,
+              scheduledAt: p.scheduledAt,
+              duration: p.duration,
+            },
+            undefined,
+            { allowPast: p.allowPast }
+          )
+        : await validateBooking(
+            gymId,
+            {
+              trainerId: p.trainerId,
+              athleteId: p.athleteId,
+              scheduledAt: p.scheduledAt,
+              duration: p.duration,
+            },
+            undefined,
+            { allowPast: p.allowPast }
+          )
     if (!validation.ok) {
       await db.proposedBooking.update({
         where: { id: proposalId },
