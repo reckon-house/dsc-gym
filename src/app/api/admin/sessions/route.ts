@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     athleteId,
     scheduledAt: at,
     duration: dur,
-  })
+  }, undefined, { allowPast: Boolean(body.allowPast) })
 
   if (!validation.ok) {
     return NextResponse.json({

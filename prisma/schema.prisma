@@ -118,6 +118,10 @@ model AvailabilityException {
   endMinute   Int?
   isAvailable Boolean
   reason      String?
+  /// Exceptions for one day are applied in this order, so a later entry
+  /// overrides an earlier one. Without it, an all-day block always beat a
+  /// later "actually, he IS free 9-11" and the override silently did nothing.
+  createdAt   DateTime @default(now())
 
   @@index([trainerId, date])
 }
@@ -321,6 +325,11 @@ model ProposedBooking {
   attendeeIds       String[]      @default([])
   coachIds          String[]      @default([])
   groupId           String?
+  /// Set when the owner is deliberately recording something that already
+  /// happened. Must persist to commit time — the commit re-validates, and
+  /// without this a backfilled proposal would pass at propose time and then
+  /// be rejected as "in the past" on confirmation.
+  allowPast         Boolean       @default(false)
   status            String        @default("pending")
   createdAt         DateTime      @default(now())
 

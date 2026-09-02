@@ -140,6 +140,11 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         },
         duration: { type: 'number' },
         notes: { type: 'string' },
+        allowPast: {
+          type: 'boolean',
+          description:
+            'Only when the owner is deliberately recording something that ALREADY happened ("log last Tuesday\'s session", "add the class we ran Saturday"). Never set this to work around a date you got wrong.',
+        },
       },
       required: ['trainerId', 'athleteId', 'scheduledAtISO'],
     },
@@ -952,6 +957,7 @@ export async function dispatchTool(
         data: { status: 'discarded' },
       })
 
+      const allowPast = Boolean(input.allowPast)
       const proposalId = await addProposedChange(ctx.draftId, {
         action: 'create',
         trainerId,
@@ -959,13 +965,14 @@ export async function dispatchTool(
         scheduledAt,
         duration,
         notes: typeof input.notes === 'string' ? input.notes : undefined,
+        allowPast,
       })
-      const validation = await validateBooking(gymId, {
-        trainerId,
-        athleteId,
-        scheduledAt,
-        duration,
-      })
+      const validation = await validateBooking(
+        gymId,
+        { trainerId, athleteId, scheduledAt, duration },
+        undefined,
+        { allowPast }
+      )
       if (!validation.ok) {
         await db.proposedBooking.update({
           where: { id: proposalId },
@@ -1066,13 +1073,26 @@ export async function dispatchTool(
       const trainerId = String(input.trainerId)
       const date = new Date(String(input.dateISO))
       date.setUTCHours(0, 0, 0, 0)
+      const startMinute = typeof input.startMinute === 'number' ? input.startMinute : null
+      const endMinute = typeof input.endMinute === 'number' ? input.endMinute : null
+      // Saying the same thing twice should not leave two rows. Production had
+      // three identical "available 9-11" entries for one Saturday.
+      await db.availabilityException.deleteMany({
+        where: {
+          trainerId,
+          date,
+          startMinute,
+          endMinute,
+          isAvailable: Boolean(input.isAvailable),
+        },
+      })
       const exception = await db.availabilityException.create({
         data: {
           trainerId,
           date,
           isAvailable: Boolean(input.isAvailable),
-          startMinute: typeof input.startMinute === 'number' ? input.startMinute : null,
-          endMinute: typeof input.endMinute === 'number' ? input.endMinute : null,
+          startMinute,
+          endMinute,
           reason: typeof input.reason === 'string' ? input.reason : null,
         },
       })

@@ -159,6 +159,14 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - A group can have several coaches. The first is the lead and shows on the
   calendar; every coach is checked for double-booking.
 
+# Recording something that already happened
+The schedule is also a record, not only a plan. When the owner says "add last
+Tuesday's session", "log the class we ran Saturday" or similar, pass
+allowPast: true on propose_booking. Without it the engine refuses the date and
+the owner cannot enter attendance they already have on paper.
+Never set allowPast to work around a date you got wrong — if a time looks
+mistaken, ask.
+
 # Adding someone to a session that already exists
 This is its own thing, and getting it wrong is the single most confusing
 failure in the app. If an athlete should join a class that is ALREADY on the

@@ -74,7 +74,8 @@ export async function PATCH(
       scheduledAt: nextScheduledAt,
       duration: nextDuration,
     },
-    id // ignore this session's own slot when checking conflicts
+    id, // ignore this session's own slot when checking conflicts
+    { allowPast: Boolean(body.allowPast) }
   )
 
   if (!validation.ok) {

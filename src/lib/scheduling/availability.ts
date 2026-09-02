@@ -90,6 +90,8 @@ export async function resolveAvailabilityForDate(
       trainerId,
       date: { gte: dayStart, lt: dayEnd },
     },
+    // Oldest first: exceptions are applied in sequence so a later entry wins.
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   })
 
   let windows: Interval[] = useDefault
@@ -99,21 +101,22 @@ export async function resolveAvailabilityForDate(
         endMinute: w.endMinute,
       }))
 
-  // Extra-hours exceptions (isAvailable=true) add intervals.
-  // Time-off exceptions (isAvailable=false) subtract intervals (or full day if null).
-  const adds: Interval[] = []
-  const removes: Interval[] = []
+  // Apply exceptions IN ORDER rather than batching every add and then every
+  // remove. The batched version made time-off unconditionally beat extra
+  // hours no matter which was entered later, so marking a trainer off for a
+  // week and then re-opening one Saturday morning left them still blocked —
+  // and the calendar showed the day as free, because it draws sessions, not
+  // availability. Sequencing means the most recent instruction wins, which is
+  // what someone editing a schedule expects.
   for (const ex of exceptions) {
     const range: Interval = {
       startMinute: ex.startMinute ?? 0,
       endMinute: ex.endMinute ?? 24 * 60,
     }
-    if (ex.isAvailable) adds.push(range)
-    else removes.push(range)
+    windows = ex.isAvailable
+      ? mergeIntervals([...windows, range])
+      : subtract(windows, [range])
   }
-
-  windows = mergeIntervals([...windows, ...adds])
-  windows = subtract(windows, removes)
 
   return {
     trainerId,
