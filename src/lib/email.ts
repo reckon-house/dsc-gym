@@ -144,6 +144,12 @@ interface EmailLayoutArgs {
   fallbackLabel: string
   fallbackUrl: string
   footnote: string
+  /**
+   * Pre-rendered HTML slotted between the intro and the button. Callers pass
+   * already-escaped markup — used by the digest, whose schedule needs to be a
+   * table so the times line up.
+   */
+  bodyHtml?: string
 }
 
 // Email-safe HTML: inline styles, table layout, 600px max width. Uses
@@ -222,9 +228,10 @@ function renderHtmlEmail(args: EmailLayoutArgs): string {
                   ${escapeHtml(args.headline)}
                 </h1>
 
-                <p style="margin:0 0 28px 0;font-family:${fontStack};font-size:16px;line-height:1.5;color:${softInk};">
+                <p style="margin:0 0 ${args.bodyHtml ? '20px' : '28px'} 0;font-family:${fontStack};font-size:16px;line-height:1.5;color:${softInk};">
                   ${escapeHtml(args.intro)}
                 </p>
+                ${args.bodyHtml ? `<div style="margin:0 0 28px 0;">${args.bodyHtml}</div>` : ''}
 
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;">
                   <tr>
@@ -733,6 +740,70 @@ See what else is open: ${args.dashboardUrl}
     fallbackLabel: 'Or open this link:',
     fallbackUrl: args.dashboardUrl,
     footnote: 'Reply to this email if you want a hand finding a fit.',
+  })
+
+  return { subject, text, html }
+}
+
+/** The morning digest: one day, in order. */
+export function buildDailyDigestEmail(args: {
+  firstName: string | null
+  dateLabel: string
+  lines: { time: string; who: string; detail: string }[]
+  url: string
+  audience: 'staff' | 'family'
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject =
+    args.audience === 'staff'
+      ? `Today at DSC — ${args.dateLabel}`
+      : `Today's training — ${args.dateLabel}`
+  const greeting = args.firstName ? `Morning ${args.firstName},` : 'Morning,'
+  const count = args.lines.length
+  const intro =
+    count === 0
+      ? 'Nothing on your schedule today.'
+      : args.audience === 'staff'
+        ? `${count} thing${count === 1 ? '' : 's'} on your floor today.`
+        : `${count} session${count === 1 ? '' : 's'} today.`
+
+  const text = `${greeting}
+
+${intro}
+
+${args.lines.map((l) => `${l.time}  ${l.who} — ${l.detail}`).join('\n')}
+
+Full day: ${args.url}
+
+— Dallas Sport Collective`
+
+  // A table rather than a list: times need to line up to be scannable at 6am.
+  const rows = args.lines
+    .map(
+      (l) => `<tr>
+<td style="padding:8px 12px 8px 0;font-family:'SF Mono',Menlo,monospace;font-size:13px;color:#141414;white-space:nowrap;vertical-align:top;">${escapeHtml(l.time)}</td>
+<td style="padding:8px 0;font-size:14px;color:#141414;vertical-align:top;"><strong>${escapeHtml(l.who)}</strong><br><span style="font-size:12px;color:#6b6b6b;">${escapeHtml(l.detail)}</span></td>
+</tr>`
+    )
+    .join('')
+
+  const html = renderHtmlEmail({
+    preview: `${intro} ${args.dateLabel}`,
+    headerLabel: args.dateLabel,
+    logoUrl: args.logoUrl,
+    headline: args.audience === 'staff' ? 'Your day' : 'Today',
+    intro,
+    bodyHtml: count
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">${rows}</table>`
+      : undefined,
+    buttonLabel: args.audience === 'staff' ? 'Open the day' : 'See the schedule',
+    buttonUrl: args.url,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.url,
+    footnote:
+      args.audience === 'staff'
+        ? 'Sent each morning. Times are gym-local.'
+        : 'Sent each morning. Reply to this email if something looks wrong.',
   })
 
   return { subject, text, html }

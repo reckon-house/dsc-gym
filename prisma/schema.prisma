@@ -54,6 +54,10 @@ model GymConfig {
   // Recovery room is billed outside the app; this is the default line price
   // used when logging a visit. Cents, so no floating-point money.
   recoveryPriceCents      Int      @default(2500)
+  /// Send families a morning digest too. Off by default: they already get a
+  /// reminder ~24h before each session, so a same-day email is a second
+  /// message about the same thing.
+  digestToFamilies        Boolean  @default(false)
   updatedAt               DateTime @updatedAt
 }
 

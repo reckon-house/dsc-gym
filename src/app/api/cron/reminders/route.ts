@@ -12,6 +12,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { sendDueReminders } from '@/lib/notify'
+import { sendDailyDigest } from '@/lib/digest'
+import { DEFAULT_GYM_ID } from '@/lib/constants'
 
 export const maxDuration = 300
 
@@ -30,17 +32,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
+  // One invocation does both the day-ahead reminders and this morning's
+  // digest. Kept on a single schedule rather than a second cron entry so the
+  // job cannot half-exist on a plan with a cron limit — and so there is one
+  // place to look when someone asks what the 6am mail run did.
+  const now = new Date()
+  const out: Record<string, unknown> = {}
+  let failed = false
+
   try {
-    const report = await sendDueReminders(new Date())
-    // Returned as JSON so the run shows up readably in Vercel's cron log —
-    // including which people were skipped for an undeliverable address.
-    console.log('[cron] reminder run', report)
-    return NextResponse.json({ success: true, ...report })
+    out.reminders = await sendDueReminders(now)
   } catch (err) {
+    failed = true
+    out.reminders = { error: 'Reminder run failed' }
     console.error('[cron] reminder run failed', err)
-    return NextResponse.json(
-      { success: false, error: 'Reminder run failed' },
-      { status: 500 }
-    )
   }
+
+  // Independently guarded: a digest failure must not cost anyone their
+  // session reminder, and vice versa.
+  try {
+    out.digest = await sendDailyDigest(DEFAULT_GYM_ID, now)
+  } catch (err) {
+    failed = true
+    out.digest = { error: 'Digest run failed' }
+    console.error('[cron] digest run failed', err)
+  }
+
+  console.log('[cron] morning run', JSON.stringify(out))
+  return NextResponse.json({ success: !failed, ...out }, { status: failed ? 500 : 200 })
 }
