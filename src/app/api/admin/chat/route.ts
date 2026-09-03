@@ -10,6 +10,7 @@ import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { getOrCreateActiveDraft } from '@/lib/scheduling/engine'
 import { SCHEDULING_TOOLS, dispatchTool } from '@/lib/scheduling/tools'
+import { windowHistory, truncationNote } from '@/lib/chatWindow'
 
 // Sonnet handles the scheduler chat well — tool use + multi-step
 // orchestration, not deep reasoning. The engine is the authority, so
@@ -305,10 +306,27 @@ export async function POST(request: NextRequest) {
   }
 
   // Load thread history into the Anthropic message format.
-  const history = await db.chatMessage.findMany({
+  const fullHistory = await db.chatMessage.findMany({
     where: { draftId },
     orderBy: { createdAt: 'asc' },
   })
+
+  // The whole transcript stays in the database and on screen; only a recent
+  // window is replayed to the model. Cut only at a real user turn — a
+  // tool_result also carries role "user" but is the tail of an assistant turn,
+  // and slicing there would orphan a tool_use and hard-fail the request.
+  const windowed = windowHistory(
+    fullHistory,
+    (m) => m.role === 'user',
+    (m) => (m.content?.length ?? 0) + (m.toolCalls ? JSON.stringify(m.toolCalls).length : 0)
+  )
+  const history = windowed.kept
+  if (windowed.truncated) {
+    console.log(
+      `[chat] replaying ${history.length}/${fullHistory.length} messages (${windowed.droppedTurns} earlier turns not sent)`
+    )
+  }
+
   const messages: StoredMessage[] = []
   for (const m of history) {
     if (m.role === 'user') {
@@ -327,7 +345,11 @@ export async function POST(request: NextRequest) {
   }
 
   const staticContext = await loadStaticContext(gymId)
-  const dynamicContext = `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)`
+  // Uncached block: the clock changes every turn, and so does the truncation
+  // note, so neither belongs in the cached prefix.
+  const dynamicContext =
+    `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)` +
+    truncationNote(windowed)
 
   const anthropic = getAnthropic()
 
