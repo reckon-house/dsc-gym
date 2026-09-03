@@ -6,6 +6,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
 import { materializeGroup, addSessionAttendee, removeSessionAttendee } from '@/lib/scheduling/engine'
+import { attendanceReport, thisWeek, monthRange } from '@/lib/reports'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved } from '@/lib/notify'
@@ -733,6 +734,24 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: { month: { type: 'string', description: '"YYYY-MM"' } },
+    },
+  },
+  {
+    name: 'attendance_report',
+    description:
+      "Who trained, and how often, over a period. Answers 'show me the athletes who showed up this week and how many times'. Counts sessions the athlete was rostered for that have already started; kiosk check-ins are reported separately because this gym records very few, so never present check-ins as the attendance number.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['week', 'month', 'custom'],
+          description: 'week = Monday to now. month = the current calendar month.',
+        },
+        fromISO: { type: 'string', description: 'Required when period is custom.' },
+        toISO: { type: 'string', description: 'Required when period is custom.' },
+        limit: { type: 'number', description: 'Top N athletes by session count. Defaults to 50.' },
+      },
     },
   },
   {
@@ -1668,6 +1687,39 @@ export async function dispatchTool(
         perAthlete: [...totals.values()]
           .sort((a, b) => b.cents - a.cents)
           .map((r) => ({ name: r.name, visits: r.visits, total: `$${(r.cents / 100).toFixed(2)}` })),
+      }
+    }
+
+    case 'attendance_report': {
+      const period = String(input.period ?? 'week')
+      const zone = await getGymTimezone(gymId)
+      let range: { from: Date; to: Date; label: string }
+      if (period === 'month') {
+        range = monthRange(new Date())
+      } else if (period === 'custom') {
+        const from = new Date(String(input.fromISO ?? ''))
+        const to = new Date(String(input.toISO ?? ''))
+        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+          return { error: 'custom period needs fromISO and toISO.' }
+        }
+        range = { from, to, label: 'Custom range' }
+      } else {
+        range = thisWeek(zone)
+      }
+      const rep = await attendanceReport(gymId, range.from, range.to, range.label)
+      const limit = Math.min(Math.max(Number(input.limit ?? 50), 1), 200)
+      return {
+        period: `${rep.label} (${rep.from} – ${rep.to})`,
+        totals: rep.totals,
+        athletes: rep.rows.slice(0, limit).map((r) => ({
+          name: r.name,
+          sessions: r.sessions,
+          checkIns: r.checkIns,
+          coaches: r.coaches,
+          lastSession: r.lastSession,
+        })),
+        ...(rep.rows.length > limit ? { truncated: rep.rows.length - limit } : {}),
+        basis: rep.basis,
       }
     }
 

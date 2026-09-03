@@ -159,6 +159,15 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - A group can have several coaches. The first is the lead and shows on the
   calendar; every coach is checked for double-booking.
 
+# Reports
+attendance_report answers "who showed up this week / this month and how many
+times". Read the totals back plainly and name the top few rather than dumping
+every row.
+State the basis honestly: the number counts sessions an athlete was ROSTERED
+for that have already started. This gym barely uses the check-in kiosk, so a
+low check-in count means the kiosk was not used, NOT that people were absent.
+Never present check-ins as the attendance figure.
+
 # Recording something that already happened
 The schedule is also a record, not only a plan. When the owner says "add last
 Tuesday's session", "log the class we ran Saturday" or similar, pass
