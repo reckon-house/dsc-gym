@@ -45,14 +45,14 @@ export default function CalendarView() {
         scheduledAt: string
         duration: number
         cancelled: boolean
-        athlete: { firstName: string; lastName: string }
+        athlete: { firstName: string; lastName: string } | null
         trainer: { user: { name: string } }
         attendees?: { id: string; firstName: string; lastName: string }[]
       }) => ({
         id: s.id,
         trainerId: s.trainerId,
         scheduledAt: s.scheduledAt,
-        athleteName: `${s.athlete.firstName} ${s.athlete.lastName}`,
+        athleteName: s.athlete ? `${s.athlete.firstName} ${s.athlete.lastName}` : null,
         trainerName: s.trainer.user.name,
         duration: s.duration,
         cancelled: s.cancelled,

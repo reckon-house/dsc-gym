@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { describeOccupant } from '@/lib/sessionRoster'
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -64,14 +65,14 @@ export async function POST(request: NextRequest) {
       scheduledAt: { gte: dayStart, lt: dayEnd },
       ...(trainerIds.length ? { trainerId: { in: trainerIds } } : {}),
     },
-    include: { trainer: { include: { user: true } }, athlete: true },
+    include: { trainer: { include: { user: true } }, athlete: true, attendees: { include: { athlete: true } }, group: { select: { name: true } } },
   })
   const warnings = sameDay
     .filter((s) => {
       const sEnd = new Date(s.scheduledAt.getTime() + s.duration * 60_000)
       return s.scheduledAt < end && sEnd > startsAt
     })
-    .map((s) => `${s.trainer.user.name} has ${s.athlete.firstName} ${s.athlete.lastName} at that time`)
+    .map((s) => `${s.trainer.user.name} has ${describeOccupant(s)} at that time`)
 
   const event = await db.calendarEvent.create({
     data: {

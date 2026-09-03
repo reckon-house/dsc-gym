@@ -15,6 +15,7 @@ import { sendEmail, buildDailyDigestEmail } from '@/lib/email'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { startOfDayInZone, endOfDayInZone, formatInZone, formatTime } from '@/lib/scheduling/timezone'
 import { isDeliverableEmail } from '@/lib/notify'
+import { sessionRoster, rosterLabel } from '@/lib/sessionRoster'
 
 export interface DigestReport {
   date: string
@@ -90,13 +91,11 @@ export async function sendDailyDigest(
   }
 
   for (const s of sessions) {
-    const roster = s.attendees.length ? s.attendees.map((a) => a.athlete) : [s.athlete]
-    const who = s.group?.name
-      ? `${s.group.name} (${roster.length})`
-      : roster.length > 1
-        ? `${roster[0].firstName} +${roster.length - 1}`
-        : `${roster[0].firstName} ${roster[0].lastName}`
-    const names = roster.map((a) => `${a.firstName} ${a.lastName}`).join(', ')
+    const roster = sessionRoster(s)
+    const who = rosterLabel(roster, s.group?.name)
+    const names = roster.length
+      ? roster.map((a) => `${a.firstName} ${a.lastName}`).join(', ')
+      : 'nobody signed up yet'
     const line: Line = {
       time: formatTime(s.scheduledAt, zone),
       who,
@@ -158,7 +157,7 @@ export async function sendDailyDigest(
   if (config?.digestToFamilies) {
     const byMailbox = new Map<string, { firstNames: Set<string>; lines: Line[]; athleteId: string }>()
     for (const s of sessions) {
-      const roster = s.attendees.length ? s.attendees.map((a) => a.athlete) : [s.athlete]
+      const roster = sessionRoster(s)
       for (const a of roster) {
         const email = a.email?.toLowerCase().trim()
         if (!isDeliverableEmail(email)) continue

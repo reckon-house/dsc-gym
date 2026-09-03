@@ -18,9 +18,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   const { trainerId, athleteId, scheduledAt, duration, notes } = body
-  if (!trainerId || !athleteId || !scheduledAt) {
+  // athleteId is optional: an open class goes on the calendar with nobody in
+  // it, and coaches, front desk or parents fill it afterwards.
+  if (!trainerId || !scheduledAt) {
     return NextResponse.json(
-      { success: false, error: 'trainerId, athleteId, scheduledAt are required' },
+      { success: false, error: 'trainerId and scheduledAt are required' },
       { status: 400 }
     )
   }
@@ -47,14 +49,15 @@ export async function POST(request: NextRequest) {
     data: {
       gymId: DEFAULT_GYM_ID,
       trainerId,
-      athleteId,
+      athleteId: athleteId ?? null,
       scheduledAt: at,
       duration: dur,
       notes: typeof notes === 'string' ? notes : null,
       // This route used to create no attendee row at all, unlike
       // POST /api/sessions. That left admin-made sessions invisible to
       // anything that reads the roster from SessionAttendee.
-      attendees: { create: [{ athleteId }] },
+      // No attendee row for an open class — the roster starts empty.
+      ...(athleteId ? { attendees: { create: [{ athleteId }] } } : {}),
     },
   })
 

@@ -7,7 +7,7 @@ export interface CardSession {
   id: string
   trainerId?: string
   scheduledAt: string
-  athleteName: string
+  athleteName: string | null
   trainerName: string
   duration: number
   cancelled?: boolean
@@ -105,7 +105,7 @@ export function WeekCards({
         label:
           s.attendees && s.attendees.length > 1
             ? `${s.attendees[0].firstName} +${s.attendees.length - 1}`
-            : s.athleteName,
+            : (s.athleteName ?? 'Open class'),
         aside: s.trainerName.split(' ')[0],
         kind: 'session',
         cancelled: !!s.cancelled,

@@ -19,7 +19,8 @@ interface DaySession {
   duration: number
   cancelled: boolean
   completed: boolean
-  athlete: { firstName: string; lastName: string }
+  athlete: { firstName: string; lastName: string } | null
+  groupName?: string | null
   trainer: { id: string; user: { name: string } }
   attendees?: { id: string; firstName: string; lastName: string }[]
 }
@@ -484,10 +485,19 @@ export default function CalendarDayDetail() {
               }
 
               const s = item.session
-              const isGroup = (s.attendees?.length ?? 1) > 1
-              const displayName = isGroup
-                ? `${s.attendees![0].firstName} +${s.attendees!.length - 1}`
-                : `${s.athlete.firstName} ${s.athlete.lastName}`
+              // An open class has nobody in it yet, so there is no name to
+              // show — say that rather than rendering a blank row.
+              const roster = s.attendees ?? []
+              const displayName =
+                roster.length > 1
+                  ? `${roster[0].firstName} +${roster.length - 1}`
+                  : roster.length === 1
+                    ? `${roster[0].firstName} ${roster[0].lastName}`
+                    : s.athlete
+                      ? `${s.athlete.firstName} ${s.athlete.lastName}`
+                      : s.groupName
+                        ? `${s.groupName} — open`
+                        : 'Open class — no one yet'
               return (
                 <button
                   key={s.id}

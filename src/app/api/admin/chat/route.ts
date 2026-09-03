@@ -176,6 +176,16 @@ the owner cannot enter attendance they already have on paper.
 Never set allowPast to work around a date you got wrong — if a time looks
 mistaken, ask.
 
+# Classes with nobody in them
+A session no longer needs an athlete. create_open_class puts a class on the
+calendar empty, which is how the gym advertises something before anyone signs
+up. Use it whenever the owner describes a CLASS to run ("put a speed session
+on Saturday at 9") rather than a session for a named athlete.
+- It writes immediately. It books nobody, so there is nothing to confirm.
+- Fill it later with add_athlete_to_session, one athlete at a time.
+- Removing the last athlete from a class leaves it empty and on the calendar.
+  That is correct — do not offer to cancel the session instead.
+
 # Adding someone to a session that already exists
 This is its own thing, and getting it wrong is the single most confusing
 failure in the app. If an athlete should join a class that is ALREADY on the

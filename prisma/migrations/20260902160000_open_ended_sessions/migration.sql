@@ -1,0 +1,11 @@
+-- A class can exist before anyone is in it.
+--
+-- Session.athleteId was required, which is why an open class could not be put
+-- on the calendar without attaching an athlete, and why removing the "primary"
+-- athlete from a group meant destroying and rebuilding the group. The roster
+-- lives in SessionAttendee; this column is now just a pointer to the first
+-- attendee, and may be null.
+--
+-- Purely a constraint relaxation: no row changes, and every existing session
+-- keeps the athlete it already had.
+ALTER TABLE "Session" ALTER COLUMN "athleteId" DROP NOT NULL;

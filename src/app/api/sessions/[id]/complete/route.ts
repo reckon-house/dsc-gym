@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { describeOccupant } from '@/lib/sessionRoster'
 
 // POST /api/sessions/[id]/complete - Mark a session as completed
 export async function POST(
@@ -76,7 +77,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: updated,
-      message: `Session with ${existingSession.athlete.firstName} ${existingSession.athlete.lastName} marked as completed`,
+      message: `Session with ${describeOccupant(existingSession)} marked as completed`,
     })
   } catch (error) {
     console.error('Error completing session:', error)
