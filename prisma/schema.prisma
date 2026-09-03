@@ -199,7 +199,12 @@ model Session {
   id                String    @id @default(cuid())
   gymId             String
   trainerId         String
-  athleteId         String // primary attendee; group sessions also use SessionAttendee
+  /// Optional. A class can sit on the calendar with nobody in it yet — the
+  /// normal state of an open class before anyone signs up. SessionAttendee is
+  /// the roster; this is only a convenience pointer to the first attendee,
+  /// kept so older single-athlete queries still read naturally. Never treat it
+  /// as "the" athlete.
+  athleteId         String?
   scheduledAt       DateTime
   duration          Int       @default(60)
   isRecurring       Boolean   @default(false)
@@ -217,7 +222,7 @@ model Session {
 
   gym             Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
   trainer         Trainer           @relation(fields: [trainerId], references: [id])
-  athlete         Athlete           @relation(fields: [athleteId], references: [id])
+  athlete         Athlete?          @relation(fields: [athleteId], references: [id])
   group           Group?            @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attendees       SessionAttendee[]
   // trainerId stays the lead coach so every existing query keeps working;

@@ -76,8 +76,10 @@ export function SessionEditSheet({
 
   async function handleSave() {
     setError(null)
-    if (!trainerId || !athleteId || !when) {
-      setError('Pick a trainer, an athlete, and a time.')
+    // An athlete is optional: a class can go on the calendar empty and be
+    // filled by coaches, front desk or parents afterwards.
+    if (!trainerId || !when) {
+      setError('Pick a coach and a time.')
       return
     }
     setSaving(true)
@@ -274,9 +276,7 @@ export function SessionEditSheet({
                 onChange={(e) => setAthleteId(e.target.value)}
                 className="w-full h-11 px-3 bg-black/5 rounded-xl text-black"
               >
-                <option value="" disabled>
-                  Choose an athlete
-                </option>
+                <option value="">Nobody yet — open class</option>
                 {sortedAthletes.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.firstName} {a.lastName}

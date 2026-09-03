@@ -29,6 +29,7 @@ import {
   resolveAvailabilityForDate,
 } from './availability'
 import { dateOnlyInZone, dayOfWeekInZone, startOfDayInZone } from './timezone'
+import { describeOccupant } from '@/lib/sessionRoster'
 
 export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
@@ -567,6 +568,22 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'create_open_class',
+    description:
+      "Put a class on the calendar with NOBODY in it. This is how a class gets advertised before anyone signs up — coaches, the front desk or parents fill it afterwards with add_athlete_to_session. Use this when the owner describes a class to run rather than a session for a named athlete. Creates immediately; it books no athlete, so there is nothing to confirm.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        trainerId: { type: 'string', description: 'The coach running it.' },
+        dateISO: { type: 'string', description: 'ISO datetime WITH timezone offset.' },
+        duration: { type: 'number', description: 'Minutes. Defaults to 60.' },
+        groupId: { type: 'string', description: 'Optional: tie it to an existing group so the calendar labels it.' },
+        notes: { type: 'string' },
+      },
+      required: ['trainerId', 'dateISO'],
+    },
+  },
+  {
     name: 'add_athlete_to_session',
     description:
       "Add an athlete to ONE session that already exists, without touching the group roster or any other week. This is the right tool when someone wants to join a single class, or attend only some of a group's sessions — NOT propose_booking, which tries to create a second session at the same time and reports the coach as already busy. Use list_sessions first to get the sessionId.",
@@ -881,7 +898,7 @@ export async function dispatchTool(
         return {
           id: s.id,
           trainerName: e?.trainer.user.name ?? null,
-          athleteName: e ? `${e.athlete.firstName} ${e.athlete.lastName}` : null,
+          athleteName: e ? describeOccupant(e) : null,
           scheduledAt: s.scheduledAt.toISOString(),
           duration: s.duration,
           cancelled: s.cancelled,
@@ -1583,7 +1600,7 @@ export async function dispatchTool(
           const cEnd = new Date(c.scheduledAt.getTime() + c.duration * 60_000)
           return c.scheduledAt < end && cEnd > startsAt
         })
-        .map((c) => `${c.trainer.user.name} has ${c.athlete.firstName} ${c.athlete.lastName} then`)
+        .map((c) => `${c.trainer.user.name} has ${describeOccupant(c)} then`)
 
       const ev = await db.calendarEvent.create({
         data: { gymId, title, startsAt, duration, trainerIds,
@@ -1980,6 +1997,40 @@ export async function dispatchTool(
         // so this no longer only affects the next materialization.
         note: 'Added athletes were also put into this group\'s upcoming sessions. Removed athletes were taken out of them.',
         ...(addedReport.length ? { warnings: addedReport } : {}),
+      }
+    }
+
+    case 'create_open_class': {
+      const trainerId = String(input.trainerId)
+      const scheduledAt = new Date(String(input.dateISO))
+      if (Number.isNaN(scheduledAt.getTime())) return { error: 'dateISO is not a valid datetime.' }
+      const duration = typeof input.duration === 'number' ? input.duration : 60
+      // No athlete, so only the coach and floor checks are meaningful.
+      const validation = await validateBooking(gymId, {
+        trainerId,
+        athleteId: null,
+        scheduledAt,
+        duration,
+      })
+      if (!validation.ok) {
+        return { error: validation.conflicts[0]?.message, conflicts: validation.conflicts }
+      }
+      const created = await db.session.create({
+        data: {
+          gymId,
+          trainerId,
+          athleteId: null,
+          scheduledAt,
+          duration,
+          groupId: input.groupId ? String(input.groupId) : null,
+          notes: input.notes ? String(input.notes) : null,
+          coaches: { create: [{ trainerId }] },
+        },
+      })
+      return {
+        ok: true,
+        sessionId: created.id,
+        note: 'On the calendar with nobody in it. Add athletes with add_athlete_to_session as they sign up.',
       }
     }
 

@@ -24,7 +24,12 @@ export interface ResolvedAvailability {
 
 export interface BookingInput {
   trainerId: string
-  athleteId: string
+  /**
+   * Null when validating an open class that nobody has joined yet. The
+   * athlete-specific checks (archived, already-booked, same-trainer-same-day)
+   * are skipped in that case; the coach and floor checks still run.
+   */
+  athleteId: string | null
   scheduledAt: Date
   duration: number
 }
@@ -95,7 +100,8 @@ export interface ScheduledSession {
   id: string
   gymId: string
   trainerId: string
-  athleteId: string
+  /** Null for an open class with nobody in it yet. Roster is SessionAttendee. */
+  athleteId: string | null
   scheduledAt: Date
   duration: number
   cancelled: boolean

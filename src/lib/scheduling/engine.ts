@@ -26,6 +26,7 @@ import type {
   SlotSuggestion,
   ValidationResult,
 } from './types'
+import { describeOccupant } from '@/lib/sessionRoster'
 
 const DEFAULT_GYM_ID = 'dsc_default_gym'
 
@@ -104,7 +105,9 @@ export async function validateBooking(
       where: { id: input.trainerId },
       include: { user: { select: { name: true } } },
     }),
-    db.athlete.findUnique({ where: { id: input.athleteId } }),
+    input.athleteId
+      ? db.athlete.findUnique({ where: { id: input.athleteId } })
+      : Promise.resolve(null),
   ])
   if (!trainer || trainer.gymId !== gymId) {
     conflicts.push({
@@ -117,12 +120,14 @@ export async function validateBooking(
       message: `${trainer.user.name} is archived and can't take new sessions.`,
     })
   }
-  if (!athlete || athlete.gymId !== gymId) {
+  // An open class legitimately has no athlete; only complain when one was
+  // named and could not be found.
+  if (input.athleteId && (!athlete || athlete.gymId !== gymId)) {
     conflicts.push({
       kind: 'UNKNOWN_ATHLETE',
       message: `Athlete ${input.athleteId} not found at this gym.`,
     })
-  } else if (athlete.archived) {
+  } else if (athlete && athlete.archived) {
     conflicts.push({
       kind: 'UNKNOWN_ATHLETE',
       message: `${athlete.firstName} ${athlete.lastName} is archived and can't be booked.`,
@@ -173,7 +178,7 @@ export async function validateBooking(
       scheduledAt: { gte: dayStart, lt: dayEnd },
       NOT: ignoreSessionId ? { id: ignoreSessionId } : undefined,
     },
-    include: { athlete: true },
+    include: { athlete: true, attendees: { include: { athlete: true } }, group: { select: { name: true } } },
   })
 
   const bufferMs = config.bufferMinutes * 60_000
@@ -191,7 +196,7 @@ export async function validateBooking(
         kind,
         // Admin-facing: includes the other athlete's name so Jordan can
         // coordinate.
-        message: `${trainer.user.name} is already with ${s.athlete.firstName} ${s.athlete.lastName} ${window}.`,
+        message: `${trainer.user.name} is already with ${describeOccupant(s)} ${window}.`,
         // Athlete-facing: same trainer + same time window, NO other-
         // athlete identity.
         publicMessage:
@@ -1007,6 +1012,11 @@ export async function addSessionAttendee(
   }
 
   await db.sessionAttendee.create({ data: { sessionId, athleteId } })
+  // First person into an open class becomes the convenience pointer, so older
+  // single-athlete queries keep reading naturally.
+  if (!session.athleteId) {
+    await db.session.update({ where: { id: sessionId }, data: { athleteId } })
+  }
   return { ok: true, attendees: await rosterOf(sessionId) }
 }
 
@@ -1030,16 +1040,15 @@ export async function removeSessionAttendee(
 
   if (session.athleteId === athleteId) {
     const others = session.attendees.filter((a) => a.athleteId !== athleteId)
-    if (others.length === 0) {
-      return {
-        ok: false,
-        error: 'That is the only athlete in this session — cancel the session instead.',
-      }
-    }
-    // Hand the primary slot to someone else who is already attending, so the
-    // session stays valid rather than being orphaned.
+    // Hand the pointer to whoever else is attending, or clear it entirely.
+    // Clearing it used to be impossible, which is why taking the "primary"
+    // athlete out of a group meant cancelling the class and rebuilding it —
+    // the column was required, so the session had nowhere to point.
     await db.$transaction([
-      db.session.update({ where: { id: sessionId }, data: { athleteId: others[0].athleteId } }),
+      db.session.update({
+        where: { id: sessionId },
+        data: { athleteId: others.length ? others[0].athleteId : null },
+      }),
       db.sessionAttendee.deleteMany({ where: { sessionId, athleteId } }),
     ])
     return { ok: true, attendees: await rosterOf(sessionId) }

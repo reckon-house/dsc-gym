@@ -18,6 +18,7 @@ import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildSta
 import { sendSms, smsConfigured } from '@/lib/sms'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { formatInZone, formatTime } from '@/lib/scheduling/timezone'
+import { sessionRoster } from '@/lib/sessionRoster'
 
 /**
  * Addresses we must never send to.
@@ -148,9 +149,7 @@ export async function notifySessionBooked(sessionId: string): Promise<void> {
 
     // Attendee rows are authoritative for a group; fall back to the primary
     // athlete for older single sessions that never got an attendee row.
-    const athletes = session.attendees.length
-      ? session.attendees.map((a) => a.athlete)
-      : [session.athlete]
+    const athletes = sessionRoster(session)
 
     const ics = buildSessionIcs({
       uid: session.id,
@@ -388,9 +387,7 @@ export async function sendDueReminders(now: Date = new Date()): Promise<Reminder
     const logoUrl = process.env.EMAIL_LOGO_URL
     const heroImageUrl = process.env.EMAIL_HERO_URL
 
-    const athletes = session.attendees.length
-      ? session.attendees.map((a) => a.athlete)
-      : [session.athlete]
+    const athletes = sessionRoster(session)
 
     const seen = new Set<string>()
     for (const athlete of athletes) {
