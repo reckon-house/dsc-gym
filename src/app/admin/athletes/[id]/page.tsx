@@ -18,6 +18,12 @@ interface Athlete {
   email: string
   phone: string | null
   birthdate: string | null
+  parentName: string | null
+  parentPhone: string | null
+  parentRelationship: string | null
+  emergencyName: string | null
+  emergencyPhone: string | null
+  emergencyRelationship: string | null
   address: string | null
   archived: boolean
   emailOptOut: boolean
@@ -274,6 +280,36 @@ export default function AthleteDetail() {
             </span>
           </div>
         </div>
+
+        {/* Who to call. Placed high on the page on purpose: if someone is
+            looking for this, they are looking for it in a hurry. */}
+        {(athlete.parentName || athlete.emergencyName) && (
+          <div className="rounded-3xl bg-black/[0.04] p-5 mb-8">
+            <div className="dsc-label text-black/40 mb-3">In an emergency</div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {athlete.parentName && (
+                <ContactCard
+                  label="Parent / guardian"
+                  name={athlete.parentName}
+                  phone={athlete.parentPhone}
+                  relationship={athlete.parentRelationship}
+                />
+              )}
+              {athlete.emergencyName && (
+                <ContactCard
+                  label="Emergency contact"
+                  name={athlete.emergencyName}
+                  phone={athlete.emergencyPhone}
+                  relationship={athlete.emergencyRelationship}
+                  sameAsParent={
+                    athlete.emergencyName === athlete.parentName &&
+                    athlete.emergencyPhone === athlete.parentPhone
+                  }
+                />
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Standing weekly slots */}
         <div>
@@ -612,6 +648,45 @@ function AddStandingSlotSheet({
       </div>
     </div>
   )
+}
+
+function ContactCard({
+  label,
+  name,
+  phone,
+  relationship,
+  sameAsParent,
+}: {
+  label: string
+  name: string
+  phone: string | null
+  relationship: string | null
+  sameAsParent?: boolean
+}) {
+  return (
+    <div>
+      <div className="dsc-label text-black/40 mb-1">
+        {label}
+        {sameAsParent && <span className="text-black/30"> · same person</span>}
+      </div>
+      <div className="font-semibold text-black">{name}</div>
+      {phone && (
+        // A tel: link so it is one tap from a phone at the desk.
+        <a href={`tel:${phone}`} className="font-mono text-sm text-black/70 underline underline-offset-2">
+          {formatPhone(phone)}
+        </a>
+      )}
+      {relationship && <div className="dsc-label text-black/40 mt-0.5">{relationship}</div>}
+    </div>
+  )
+}
+
+/** +12145550123 -> (214) 555-0123. Stored E.164, read by humans. */
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d
+  if (ten.length !== 10) return raw
+  return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

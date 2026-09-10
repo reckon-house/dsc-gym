@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { isMinor, parseBirthdate } from '@/lib/guardian'
 import Link from 'next/link'
 import Image from 'next/image'
 
@@ -22,7 +23,20 @@ export default function AthleteRegister() {
     password: '',
     legalName: '',
     agreed: false,
+    parentName: '',
+    parentPhone: '',
+    parentRelationship: '',
+    emergencySameAsParent: true,
+    emergencyName: '',
+    emergencyPhone: '',
+    emergencyRelationship: '',
   })
+  // The server decides who is a minor too — this only controls what is shown.
+  const isMinorAthlete = Boolean(
+    formData.birthdate && parseBirthdate(formData.birthdate) && isMinor(parseBirthdate(formData.birthdate)!)
+  )
+  const todayISO = new Date().toISOString().slice(0, 10)
+
   const [showWaiver, setShowWaiver] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -51,6 +65,14 @@ export default function AthleteRegister() {
           phone: formData.phone,
           password: formData.password,
           legalName: formData.legalName || `${formData.firstName} ${formData.lastName}`,
+          birthdate: formData.birthdate,
+          parentName: formData.parentName,
+          parentPhone: formData.parentPhone,
+          parentRelationship: formData.parentRelationship,
+          emergencySameAsParent: formData.emergencySameAsParent,
+          emergencyName: formData.emergencyName,
+          emergencyPhone: formData.emergencyPhone,
+          emergencyRelationship: formData.emergencyRelationship,
         }),
       })
       const data = await res.json()
@@ -189,18 +211,103 @@ export default function AthleteRegister() {
                 placeholder="Mobile number"
                 className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
               />
-              {/* Optional. Lets the gym tailor announcements by age group. */}
+              {/* Required: decides whether a parent and emergency contact are
+                  needed, and lets the gym tailor announcements by age group. */}
               <label className="block">
                 <span className="dsc-label text-white/60 px-6 mb-1.5 block">
-                  Date of birth (optional)
+                  Date of birth
                 </span>
                 <input
                   type="date"
                   value={formData.birthdate}
                   onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
+                  required
+                  max={todayISO}
                   className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
                 />
               </label>
+
+              {isMinorAthlete && (
+                <div className="rounded-3xl bg-white/10 p-4 space-y-3">
+                  <div className="dsc-label text-white/70 px-2">
+                    Parent or guardian — required under 18
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.parentName}
+                    onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
+                    required
+                    placeholder="Parent or guardian name"
+                    className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                  />
+                  <input
+                    type="tel"
+                    value={formData.parentPhone}
+                    onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                    required
+                    placeholder="Their mobile number"
+                    className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                  />
+                  <input
+                    type="text"
+                    value={formData.parentRelationship}
+                    onChange={(e) =>
+                      setFormData({ ...formData, parentRelationship: e.target.value })
+                    }
+                    placeholder="Relationship (mother, father, guardian…)"
+                    className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                  />
+
+                  <label className="flex items-start gap-3 px-2 pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.emergencySameAsParent}
+                      onChange={(e) =>
+                        setFormData({ ...formData, emergencySameAsParent: e.target.checked })
+                      }
+                      className="mt-1 w-5 h-5 accent-white shrink-0"
+                    />
+                    <span className="text-sm text-white/85 leading-snug">
+                      Emergency contact is the same person
+                    </span>
+                  </label>
+
+                  {!formData.emergencySameAsParent && (
+                    <>
+                      <div className="dsc-label text-white/70 px-2 pt-1">Emergency contact</div>
+                      <input
+                        type="text"
+                        value={formData.emergencyName}
+                        onChange={(e) =>
+                          setFormData({ ...formData, emergencyName: e.target.value })
+                        }
+                        required
+                        placeholder="Emergency contact name"
+                        className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      />
+                      <input
+                        type="tel"
+                        value={formData.emergencyPhone}
+                        onChange={(e) =>
+                          setFormData({ ...formData, emergencyPhone: e.target.value })
+                        }
+                        required
+                        placeholder="Their mobile number"
+                        className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      />
+                      <input
+                        type="text"
+                        value={formData.emergencyRelationship}
+                        onChange={(e) =>
+                          setFormData({ ...formData, emergencyRelationship: e.target.value })
+                        }
+                        placeholder="Relationship (grandparent, aunt…)"
+                        className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
               <input
                 type="password"
                 value={formData.password}
