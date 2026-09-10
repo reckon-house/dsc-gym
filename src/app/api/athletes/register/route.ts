@@ -10,6 +10,7 @@ import {
 import { normalizePhone } from '@/lib/phone'
 import { publicBaseUrl } from '@/lib/oauth/util'
 import { checkRateLimit, clientIp, tooManyRequests, RULES } from '@/lib/rateLimit'
+import { isMinor, parseBirthdate, resolveGuardian } from '@/lib/guardian'
 
 // POST /api/athletes/register - Public athlete self-registration.
 // Creates an unverified athlete and sends a verification email.
@@ -60,26 +61,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Birthdate is optional. Stored as a DATE at UTC midnight so it can't
-    // drift a day depending on where the server runs. Used for age-banded
-    // announcements; nulls are treated as "unknown", never guessed.
-    let parsedBirthdate: Date | null = null
-    if (birthdate) {
-      const raw = String(birthdate).trim()
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        return NextResponse.json(
-          { success: false, error: 'Birthdate must be YYYY-MM-DD.' },
-          { status: 400 }
-        )
-      }
-      const d = new Date(`${raw}T00:00:00.000Z`)
-      if (Number.isNaN(d.getTime())) {
-        return NextResponse.json(
-          { success: false, error: 'Birthdate is not a real date.' },
-          { status: 400 }
-        )
-      }
-      parsedBirthdate = d
+    // Birthdate is now REQUIRED at signup. It decides whether a parent and
+    // emergency contact must be supplied, so leaving it optional would let
+    // anyone skip that by omitting it. It also unblocks age-banded
+    // announcements, which currently cannot see the athletes who have none.
+    const parsedBirthdate = parseBirthdate(String(birthdate ?? ''))
+    if (!parsedBirthdate) {
+      return NextResponse.json(
+        { success: false, error: 'Enter a date of birth as YYYY-MM-DD.' },
+        { status: 400 }
+      )
+    }
+
+    // Under-18s must have a parent/guardian and an emergency contact. The
+    // server decides who is a minor — trusting a flag from the form would let
+    // a direct POST skip the requirement entirely.
+    const minor = isMinor(parsedBirthdate)
+    const guardian = resolveGuardian(body, minor, normalizePhone)
+    if (!guardian.ok) {
+      return NextResponse.json({ success: false, error: guardian.error }, { status: 400 })
     }
 
     const normalizedEmail = email.toLowerCase().trim()
@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
         email: normalizedEmail,
         phone: normalizedPhone,
         birthdate: parsedBirthdate,
+        ...guardian.fields,
         passwordHash,
         trainerId: null,
         // A sibling joining an ALREADY-verified mailbox needs no verification —
