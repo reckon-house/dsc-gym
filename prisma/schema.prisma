@@ -67,6 +67,13 @@ model User {
   passwordHash String
   name         String
   role         String   @default("TRAINER")
+  /// False disables the login without deleting the person.
+  ///
+  /// Archiving a Trainer only hides them from coach pickers — it never stopped
+  /// them signing in. Deleting the User instead would break attribution:
+  /// resolvedBy, createdBy and the notification log all point here, and a
+  /// deleted row turns "who approved this" into a dangling id.
+  active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   trainer Trainer?

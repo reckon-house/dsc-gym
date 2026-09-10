@@ -96,6 +96,12 @@ export async function login(
     return { success: false, error: 'Invalid credentials' }
   }
 
+  // Checked AFTER the password so a wrong guess and a disabled account are
+  // indistinguishable to an attacker probing for valid logins.
+  if (!user.active) {
+    return { success: false, error: 'This account has been disabled. Ask an admin to re-enable it.' }
+  }
+
   await createSession(user)
 
   return {

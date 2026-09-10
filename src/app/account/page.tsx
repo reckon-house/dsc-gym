@@ -259,7 +259,12 @@ function StaffResetPanel({ staff }: { staff: Staff[] }) {
 
   return (
     <div className="mt-8">
-      <div className="dsc-label text-black/40 mb-2">Reset someone else&rsquo;s password</div>
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <span className="dsc-label text-black/40">Reset someone else&rsquo;s password</span>
+        <a href="/admin/staff" className="dsc-label text-black/50 hover:text-black">
+          Manage staff →
+        </a>
+      </div>
 
       {doneFor && (
         <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 mb-3">

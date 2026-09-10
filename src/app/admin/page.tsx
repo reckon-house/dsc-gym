@@ -74,6 +74,7 @@ const LINKS: { href: string; label: string; desc: string }[] = [
   { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
   { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
   { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },
+  { href: '/admin/staff', label: 'Staff', desc: 'Logins & access' },
 ]
 
 export default function AdminHome() {

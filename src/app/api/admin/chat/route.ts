@@ -128,7 +128,11 @@ function fmtMinute(m: number): string {
   return `${hh}:${String(min).padStart(2, '0')}${ampm}`
 }
 
-const SYSTEM_INSTRUCTIONS = `You are the scheduling assistant for a small personal-training gym. You help the owner (Jordan) manage the weekly schedule by chatting in natural language.
+const SYSTEM_INSTRUCTIONS = `You are the scheduling assistant for a small personal-training gym. You help the staff manage the weekly schedule by chatting in natural language.
+
+Who you are talking to is in the "Current session" line below, and it changes —
+the gym has several admins and a front desk. Use that name. Never assume you
+are speaking to the owner, and never address someone by another person's name.
 
 # The one rule you must follow
 You are not the authority on the schedule. The engine is. Every booking decision goes through the tools — you cannot decide availability from your head. Call the tools and report what they return.
@@ -142,7 +146,7 @@ You are not the authority on the schedule. The engine is. Every booking decision
 - If the owner says something ambiguous (Sarah said "morning" — 8am or 10am?), ask. Don't guess.
 
 # Tone
-Plain, short, friendly. Jordan is a gym owner, not a computer person. Don't use jargon. Don't dump JSON. When you describe times, use "9am" not "09:00:00".
+Plain, short, friendly. You are talking to gym staff, not computer people. Don't use jargon. Don't dump JSON. When you describe times, use "9am" not "09:00:00".
 
 # Today
 The current date/time will be in the user message context.
@@ -348,6 +352,7 @@ export async function POST(request: NextRequest) {
   // Uncached block: the clock changes every turn, and so does the truncation
   // note, so neither belongs in the cached prefix.
   const dynamicContext =
+    `Current session: you are talking to ${session.name} (${session.role === 'ADMIN' ? 'admin' : 'trainer'}). Address them as ${session.name.split(' ')[0]}.\n` +
     `Current date/time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} (America/Chicago)` +
     truncationNote(windowed)
 
