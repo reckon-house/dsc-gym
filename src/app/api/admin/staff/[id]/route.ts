@@ -50,6 +50,8 @@ export async function PATCH(
       { status: 403 }
     )
   }
+  if (body.isPT !== undefined) data.isPT = Boolean(body.isPT)
+
   if (body.isOwner !== undefined) {
     if (!actorIsOwner) {
       return NextResponse.json({ success: false, error: 'Only an owner can grant owner access.' }, { status: 403 })
@@ -193,7 +195,7 @@ export async function PATCH(
 
   const updated = await db.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, role: true, active: true, isOwner: true, trainer: { select: { archived: true } } },
+    select: { id: true, name: true, email: true, role: true, active: true, isOwner: true, isPT: true, trainer: { select: { archived: true } } },
   })
 
   return NextResponse.json({

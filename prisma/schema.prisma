@@ -82,6 +82,8 @@ model User {
   /// Owners see money: prices, revenue, balances. Always also ADMIN. Only an
   /// owner can grant it, and an admin who isn't one can't edit an owner.
   isOwner      Boolean  @default(false)
+  /// The gym's physical therapist: gets injury follow-ups flagged by coaches.
+  isPT         Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   trainer Trainer?
@@ -813,25 +815,50 @@ model TimeOffRequest {
 /// does (not other families, not the public MCP tools). "Past injury" is an
 /// injury with active = false, so resolving one keeps the history.
 model HealthNote {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   gymId         String
   athleteId     String
-  athlete       Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  athlete       Athlete   @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   /// injury | pt | condition
   kind          String
   title         String
   details       String?
   /// Free text on purpose ("since August", "2024"): families rarely know a date.
   since         String?
-  active        Boolean  @default(true)
+  active        Boolean   @default(true)
   /// staff | family — who wrote it. Families can only delete their own.
   createdByRole String
   createdByName String?
   updatedByName String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  /// PT follow-up: null (not flagged) | flagged | following | cleared.
+  /// Staff-only, like the comments — families see only active/past.
+  ptStatus      String?
+  flaggedAt     DateTime?
+  flaggedByName String?
+  flaggedById   String?
+  clearedAt     DateTime?
+  clearedByName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  comments HealthNoteComment[]
 
   @@index([athleteId, active])
+  @@index([gymId, ptStatus])
+}
+
+/// Coach ↔ PT conversation about one injury. Staff-only: never returned by
+/// the family routes.
+model HealthNoteComment {
+  id        String     @id @default(cuid())
+  noteId    String
+  note      HealthNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  body      String
+  byUserId  String?
+  byName    String?
+  createdAt DateTime   @default(now())
+
+  @@index([noteId, createdAt])
 }
 
 /// Someone interested who isn't an athlete yet: a DM, a walk-in, a referral, a

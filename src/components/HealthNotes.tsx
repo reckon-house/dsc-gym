@@ -18,6 +18,9 @@ interface Note {
   createdByName: string | null
   updatedByName: string | null
   updatedAt: string
+  /** Staff only. */
+  ptStatus?: 'flagged' | 'following' | 'cleared' | null
+  commentCount?: number
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -66,6 +69,12 @@ export function HealthNotes({ base, query = '', audience }: Props) {
     return true
   }
 
+  async function flag(n: Note) {
+    const message = prompt(`Flag "${n.title}" for the PT. Add a note for them (optional):`, '')
+    if (message === null) return
+    await call(`/api/injuries/${n.id}/flag`, 'POST', { message })
+  }
+
   const active = (notes ?? []).filter((n) => n.active)
   const past = (notes ?? []).filter((n) => !n.active)
 
@@ -92,7 +101,12 @@ export function HealthNotes({ base, query = '', audience }: Props) {
       ) : (
         <div className="space-y-2">
           {active.map((n) => (
-            <NoteRow key={n.id} note={n} onEdit={() => setEditing(n)} />
+            <NoteRow
+              key={n.id}
+              note={n}
+              onEdit={() => setEditing(n)}
+              onFlag={audience === 'staff' ? () => flag(n) : undefined}
+            />
           ))}
         </div>
       )}
@@ -145,27 +159,43 @@ export function HealthNotes({ base, query = '', audience }: Props) {
   )
 }
 
-function NoteRow({ note, onEdit }: { note: Note; onEdit: () => void }) {
+function NoteRow({ note, onEdit, onFlag }: { note: Note; onEdit: () => void; onFlag?: () => void }) {
   const tone = !note.active
     ? 'bg-white/60 text-black/50'
     : note.kind === 'condition'
       ? 'bg-white text-black'
       : 'bg-rose-50 text-rose-950'
+  const withPT = note.ptStatus === 'flagged' || note.ptStatus === 'following'
   return (
-    <button onClick={onEdit} className={`w-full text-left rounded-2xl px-4 py-3 ${tone}`}>
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="font-semibold truncate">{note.title}</div>
-        <span className="dsc-label opacity-60 shrink-0">
-          {note.active ? KIND_LABEL[note.kind] : 'Past'}
-        </span>
-      </div>
-      {note.details && <div className="text-sm opacity-80 mt-0.5 whitespace-pre-wrap">{note.details}</div>}
-      <div className="dsc-label opacity-50 mt-1">
-        {note.since ? `Since ${note.since} · ` : ''}
-        {note.createdByRole === 'family' ? 'From family' : `From ${note.createdByName ?? 'staff'}`}
-        {note.updatedByName && note.updatedByName !== note.createdByName ? ` · edited by ${note.updatedByName}` : ''}
-      </div>
-    </button>
+    <div className={`rounded-2xl ${tone}`}>
+      <button onClick={onEdit} className="w-full text-left px-4 pt-3 pb-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="font-semibold truncate">{note.title}</div>
+          <span className="dsc-label opacity-60 shrink-0">{note.active ? KIND_LABEL[note.kind] : 'Past'}</span>
+        </div>
+        {note.details && <div className="text-sm opacity-80 mt-0.5 whitespace-pre-wrap">{note.details}</div>}
+        <div className="dsc-label opacity-50 mt-1">
+          {note.since ? `Since ${note.since} · ` : ''}
+          {note.createdByRole === 'family' ? 'From family' : `From ${note.createdByName ?? 'staff'}`}
+          {note.updatedByName && note.updatedByName !== note.createdByName ? ` · edited by ${note.updatedByName}` : ''}
+        </div>
+      </button>
+      {/* Staff only: PT follow-up. Outside the button — no nested controls. */}
+      {onFlag && note.active && note.kind !== 'condition' && (
+        <div className="px-4 pb-3 -mt-1">
+          {withPT ? (
+            <a href={`/injuries#${note.id}`} className="dsc-label inline-block px-2 py-1 rounded-full bg-amber-100 text-amber-900">
+              {note.ptStatus === 'flagged' ? 'With PT · new' : 'PT following up'}
+              {note.commentCount ? ` · ${note.commentCount} notes` : ''} →
+            </a>
+          ) : (
+            <button onClick={onFlag} className="dsc-label px-2 py-1 rounded-full bg-white text-black hover:bg-black/5">
+              Flag for PT
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 

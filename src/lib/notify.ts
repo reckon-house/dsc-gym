@@ -17,6 +17,7 @@ import { db } from '@/lib/db'
 import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildStandingSlotDigestEmail, buildSessionIcs, buildGroupJoinRequestEmail, buildGroupJoinApprovedEmail, buildGroupJoinDeclinedEmail,
   buildTimeOffRequestEmail,
   buildTimeOffDecidedEmail,
+  buildInjuryFollowupEmail,
 } from '@/lib/email'
 import { sendSms, smsConfigured } from '@/lib/sms'
 import { getGymTimezone } from '@/lib/scheduling/engine'
@@ -800,5 +801,111 @@ export async function notifyTimeOffDecided(requestId: string): Promise<void> {
     await settle(logId, delivered ? 'sent' : 'failed')
   } catch (err) {
     console.error('[notify] notifyTimeOffDecided failed', requestId, err)
+  }
+}
+
+async function sendFollowup(args: {
+  gymId: string
+  dedupeKey: string
+  to: string
+  athleteId: string
+  kind: 'flagged' | 'reply'
+  athleteName: string
+  injury: string
+  fromName: string
+  message: string | null
+}) {
+  const logId = await claim({
+    gymId: args.gymId,
+    dedupeKey: args.dedupeKey,
+    type: args.kind === 'flagged' ? 'pt_flagged' : 'pt_reply',
+    channel: 'email',
+    recipient: args.to,
+    athleteId: args.athleteId,
+  })
+  if (!logId) return
+  const tpl = buildInjuryFollowupEmail({
+    kind: args.kind,
+    athleteName: args.athleteName,
+    injury: args.injury,
+    fromName: args.fromName,
+    message: args.message,
+    url: `${baseUrl()}/injuries`,
+    logoUrl: process.env.EMAIL_LOGO_URL,
+  })
+  const { delivered } = await sendEmail({ to: args.to, ...tpl })
+  await settle(logId, delivered ? 'sent' : 'failed')
+}
+
+/** The PT(s) hear about a newly flagged injury. */
+export async function notifyPtFlagged(noteId: string): Promise<void> {
+  try {
+    const note = await db.healthNote.findUnique({
+      where: { id: noteId },
+      include: {
+        athlete: { select: { firstName: true, lastName: true } },
+        comments: { orderBy: { createdAt: 'asc' }, take: 1 },
+      },
+    })
+    if (!note || note.ptStatus !== 'flagged' || !note.flaggedAt) return
+    const pts = await db.user.findMany({ where: { isPT: true, active: true }, select: { id: true, email: true, name: true } })
+    if (pts.length === 0) {
+      console.error('[notify] injury flagged for PT but no active PT is set', { noteId })
+      return
+    }
+    for (const pt of pts) {
+      if (pt.id === note.flaggedById || !isDeliverableEmail(pt.email)) continue
+      await sendFollowup({
+        gymId: note.gymId,
+        dedupeKey: `pt_flag:email:${note.id}:${note.flaggedAt.toISOString()}:${pt.email}`,
+        to: pt.email,
+        athleteId: note.athleteId,
+        kind: 'flagged',
+        athleteName: `${note.athlete.firstName} ${note.athlete.lastName}`,
+        injury: note.title,
+        fromName: note.flaggedByName ?? 'A coach',
+        message: note.comments[0]?.body ?? null,
+      })
+    }
+  } catch (err) {
+    console.error('[notify] notifyPtFlagged failed', noteId, err)
+  }
+}
+
+/**
+ * A reply in the thread. From the PT → the coach who flagged it; from anyone
+ * else → the PT(s). Never to the person who wrote it.
+ */
+export async function notifyPtComment(commentId: string): Promise<void> {
+  try {
+    const c = await db.healthNoteComment.findUnique({
+      where: { id: commentId },
+      include: { note: { include: { athlete: { select: { firstName: true, lastName: true } } } } },
+    })
+    if (!c) return
+    const author = c.byUserId
+      ? await db.user.findUnique({ where: { id: c.byUserId }, select: { isPT: true } })
+      : null
+    const recipients = author?.isPT
+      ? c.note.flaggedById
+        ? await db.user.findMany({ where: { id: c.note.flaggedById, active: true }, select: { id: true, email: true } })
+        : []
+      : await db.user.findMany({ where: { isPT: true, active: true }, select: { id: true, email: true } })
+    for (const r of recipients) {
+      if (r.id === c.byUserId || !isDeliverableEmail(r.email)) continue
+      await sendFollowup({
+        gymId: c.note.gymId,
+        dedupeKey: `pt_reply:email:${c.id}:${r.email}`,
+        to: r.email,
+        athleteId: c.note.athleteId,
+        kind: 'reply',
+        athleteName: `${c.note.athlete.firstName} ${c.note.athlete.lastName}`,
+        injury: c.note.title,
+        fromName: c.byName ?? 'Staff',
+        message: c.body,
+      })
+    }
+  } catch (err) {
+    console.error('[notify] notifyPtComment failed', commentId, err)
   }
 }

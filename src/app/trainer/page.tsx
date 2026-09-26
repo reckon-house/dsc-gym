@@ -89,6 +89,7 @@ export default function TrainerDashboard() {
   const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
   const [timeOff, setTimeOff] = useState<TimeOffRow[]>([])
   const [timeOffOpen, setTimeOffOpen] = useState(false)
+  const [injuries, setInjuries] = useState<{ count: number; fresh: number; iAmPT: boolean } | null>(null)
   const [sheetInitial, setSheetInitial] = useState<TrainerSessionDraft | null>(null)
 
   function openCreate() {
@@ -120,6 +121,16 @@ export default function TrainerDashboard() {
     const res = await fetch('/api/attendance/owed')
     const data = await res.json()
     if (data.success) setOwed(data.data)
+  }, [])
+
+  const loadInjuries = useCallback(async () => {
+    const d = await fetch('/api/injuries?view=open')
+      .then((r) => r.json())
+      .catch(() => null)
+    if (d?.success) {
+      const items = d.data.items as { ptStatus: string }[]
+      setInjuries({ count: items.length, fresh: items.filter((i) => i.ptStatus === 'flagged').length, iAmPT: d.data.iAmPT })
+    }
   }, [])
 
   const loadTimeOff = useCallback(async () => {
@@ -170,7 +181,8 @@ export default function TrainerDashboard() {
     loadAthletes()
     loadOwed()
     loadTimeOff()
-  }, [loadSessions, loadAthletes, loadOwed, loadTimeOff])
+    loadInjuries()
+  }, [loadSessions, loadAthletes, loadOwed, loadTimeOff, loadInjuries])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -240,17 +252,40 @@ export default function TrainerDashboard() {
               day: 'numeric',
             })}
           </div>
-          <div className="flex items-end justify-between gap-3 mb-5">
+          <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
             <h1 className="dsc-headline text-4xl md:text-5xl text-black">
               {user?.name?.split(' ')[0] || 'Trainer'}
             </h1>
-            <Link
-              href="/schedule"
-              className="h-10 px-4 rounded-full bg-black/5 hover:bg-black/10 text-sm font-semibold text-black flex items-center shrink-0"
-            >
-              Gym schedule →
-            </Link>
+            <div className="flex gap-2 shrink-0">
+              <Link
+                href="/injuries"
+                className="h-10 px-4 rounded-full bg-black/5 hover:bg-black/10 text-sm font-semibold text-black flex items-center"
+              >
+                Injuries
+              </Link>
+              <Link
+                href="/schedule"
+                className="h-10 px-4 rounded-full bg-black/5 hover:bg-black/10 text-sm font-semibold text-black flex items-center"
+              >
+                Gym schedule →
+              </Link>
+            </div>
           </div>
+          {injuries && injuries.count > 0 && (
+            <Link
+              href="/injuries"
+              className="block mb-5 rounded-3xl bg-rose-50 border border-rose-200 px-5 py-4 text-rose-950 hover:bg-rose-100"
+            >
+              <div className="dsc-label text-rose-900/70">
+                {injuries.iAmPT ? 'PT follow-ups' : 'Injuries with the PT'}
+              </div>
+              <div className="font-semibold mt-0.5">
+                {injuries.iAmPT && injuries.fresh > 0
+                  ? `${injuries.fresh} new to look at${injuries.count > injuries.fresh ? ` · ${injuries.count} open` : ''}`
+                  : `${injuries.count} open`}
+              </div>
+            </Link>
+          )}
 
           {todaySessions.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-black/15 p-6 text-center">

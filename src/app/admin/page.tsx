@@ -83,6 +83,7 @@ const CARDS: {
 const LINKS: { href: string; label: string; desc: string }[] = [
   { href: '/admin/leads', label: 'Leads', desc: 'Waitlist & follow-ups' },
   { href: '/schedule', label: 'Gym schedule', desc: 'What every coach sees' },
+  { href: '/injuries', label: 'Injuries', desc: 'Coach ↔ PT follow-ups' },
   { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
   { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
   { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },

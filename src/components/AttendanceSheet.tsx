@@ -253,6 +253,12 @@ export function AttendanceSheet({ sessionId, open, onClose, onSaved }: Props) {
           )}
 
           {data && (
+            <a href="/injuries" className="block text-center dsc-label text-rose-700/70 hover:text-rose-700">
+              Someone got hurt? Report an injury →
+            </a>
+          )}
+
+          {data && (
             <button
               onClick={save}
               disabled={saving}
