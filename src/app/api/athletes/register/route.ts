@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, verifyPassword } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { cleanSports, gradeToStored } from '@/lib/grade'
 import {
   buildVerificationEmail,
   generateVerificationToken,
@@ -115,6 +116,14 @@ export async function POST(request: NextRequest) {
     // confirmed; drives both the stored token and whether we email at all.
     const alreadyVerified = joiningFamily && Boolean(existing!.emailVerified)
 
+    // Sport and grade: optional, but collected here so the gym never has to
+    // chase them. Grade is stored as a graduation year (see lib/grade).
+    const grade = gradeToStored(String(body.grade ?? ''))
+    if (!grade.ok) {
+      return NextResponse.json({ success: false, error: grade.error }, { status: 400 })
+    }
+    const sports = cleanSports(body.sports)
+
     const passwordHash = await hashPassword(password)
     const token = generateVerificationToken()
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
@@ -129,6 +138,9 @@ export async function POST(request: NextRequest) {
         phone: normalizedPhone,
         birthdate: parsedBirthdate,
         ...guardian.fields,
+        sports,
+        gradYear: grade.gradYear,
+        schoolLevel: grade.schoolLevel,
         passwordHash,
         trainerId: null,
         // A sibling joining an ALREADY-verified mailbox needs no verification —

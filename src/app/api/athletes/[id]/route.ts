@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { normalizePhone } from '@/lib/phone'
+import { resolveGuardian } from '@/lib/guardian'
+import { cleanSports, gradeToStored } from '@/lib/grade'
 import { deleteAthletePermanently } from '@/lib/athletes'
 
 // GET /api/athletes/[id] - Get a single athlete
@@ -153,6 +155,28 @@ export async function PATCH(
     if (body.address !== undefined) {
       const raw = String(body.address ?? '').trim()
       updateData.address = raw === '' ? null : raw
+    }
+
+    // Parent / guardian and emergency contact. Signup requires these for
+    // under-18s, but profiles that existed before that (or were created by
+    // staff) have none, so staff fill them in here. Not required on edit —
+    // refusing to save a phone change because the emergency contact is blank
+    // would only get in the way. Same rules and "same as parent" copy as
+    // signup, via the shared module.
+    if (body.guardian !== undefined && body.guardian !== null) {
+      const g = resolveGuardian(body.guardian, false, normalizePhone)
+      if (!g.ok) {
+        return NextResponse.json({ success: false, error: g.error }, { status: 400 })
+      }
+      Object.assign(updateData, g.fields)
+    }
+
+    if (body.sports !== undefined) updateData.sports = cleanSports(body.sports)
+    if (body.grade !== undefined) {
+      const g = gradeToStored(String(body.grade ?? ''))
+      if (!g.ok) return NextResponse.json({ success: false, error: g.error }, { status: 400 })
+      updateData.gradYear = g.gradYear
+      updateData.schoolLevel = g.schoolLevel
     }
 
     // Contact consent. emailOptOut only suppresses announcements — reminders
