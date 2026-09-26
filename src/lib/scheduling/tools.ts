@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { archiveAthlete, unarchiveAthlete } from '@/lib/athletes'
 import { materializeGroup, addSessionAttendee, removeSessionAttendee } from '@/lib/scheduling/engine'
 import { attendanceReport, thisWeek, monthRange } from '@/lib/reports'
+import { recordAttendance, attendanceOwed, absentAthletes } from '@/lib/attendance'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved } from '@/lib/notify'
@@ -29,7 +30,7 @@ import {
   resolveAvailabilityForDate,
 } from './availability'
 import { dateOnlyInZone, dayOfWeekInZone, startOfDayInZone } from './timezone'
-import { describeOccupant } from '@/lib/sessionRoster'
+import { describeOccupant, sessionRoster } from '@/lib/sessionRoster'
 
 export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
   {
@@ -754,6 +755,38 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'take_attendance',
+    description:
+      "Record who actually came to a session. Everyone on the roster is marked present EXCEPT the athletes in absentAthleteIds; dropInAthleteIds are people who came without being booked and are added as present. Use for 'mark Tuesday's group, everyone came except Zoe' or 'Marcus dropped into the 5pm'. Works on past sessions — that is the point. Get the sessionId from list_sessions or list_attendance_owed.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        absentAthleteIds: { type: 'array', items: { type: 'string' } },
+        dropInAthleteIds: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'list_attendance_owed',
+    description:
+      'Sessions in the last two weeks that have started but nobody has taken attendance for. Optionally for one coach.',
+    input_schema: {
+      type: 'object',
+      properties: { trainerId: { type: 'string' } },
+    },
+  },
+  {
+    name: 'list_absent_athletes',
+    description:
+      "Active athletes nobody has seen in N days (default 14) — the 'who should we reach out to' list. Each row says whether their last visit was CONFIRMED by attendance or only assumed from being booked; say so when it matters.",
+    input_schema: {
+      type: 'object',
+      properties: { days: { type: 'number' } },
+    },
+  },
+  {
     name: 'attendance_report',
     description:
       "Who trained, and how often, over a period. Answers 'show me the athletes who showed up this week and how many times'. Counts sessions the athlete was rostered for that have already started; kiosk check-ins are reported separately because this gym records very few, so never present check-ins as the attendance number.",
@@ -791,6 +824,8 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 interface DispatchContext {
   gymId: string
   draftId: string
+  /** Who is chatting, so actions like attendance are attributed to them. */
+  userId?: string
 }
 
 export async function dispatchTool(
@@ -1707,6 +1742,53 @@ export async function dispatchTool(
       }
     }
 
+    case 'take_attendance': {
+      const sessionId = String(input.sessionId ?? '')
+      const r = await recordAttendance({
+        gymId,
+        sessionId,
+        marks: ((input.absentAthleteIds as string[] | undefined) ?? []).map((athleteId) => ({
+          athleteId: String(athleteId),
+          status: 'no_show' as const,
+        })),
+        dropIns: ((input.dropInAthleteIds as string[] | undefined) ?? []).map(String),
+        byUserId: ctx.userId ?? 'chat',
+      })
+      if (!r.ok) return { error: r.error }
+      return { ok: true, present: r.present, noShow: r.noShow, dropIns: r.dropIns }
+    }
+
+    case 'list_attendance_owed': {
+      const rows = await attendanceOwed(gymId, input.trainerId ? String(input.trainerId) : null)
+      return {
+        sessions: rows.map((s) => ({
+          sessionId: s.id,
+          when: s.scheduledAt.toISOString(),
+          coach: s.trainer.user.name,
+          group: s.group?.name ?? null,
+          roster: sessionRoster(s).map((a) => ({ id: a.id, name: `${a.firstName} ${a.lastName}` })),
+        })),
+      }
+    }
+
+    case 'list_absent_athletes': {
+      const days = Math.min(Math.max(Number(input.days ?? 14), 1), 180)
+      const r = await absentAthletes(gymId, days)
+      return {
+        days,
+        athletes: r.rows.map((x) => ({
+          name: x.name,
+          athleteId: x.athleteId,
+          daysSinceLastVisit: x.daysAway,
+          lastVisitConfirmed: x.confirmed,
+          nextBooked: x.nextSession,
+          recentNoShows: x.recentNoShows,
+        })),
+        neverAttended: r.neverSeen,
+        lapsedOver90Days: r.lapsed,
+      }
+    }
+
     case 'attendance_report': {
       const period = String(input.period ?? 'week')
       const zone = await getGymTimezone(gymId)
@@ -1731,6 +1813,7 @@ export async function dispatchTool(
         athletes: rep.rows.slice(0, limit).map((r) => ({
           name: r.name,
           sessions: r.sessions,
+          noShows: r.noShows,
           checkIns: r.checkIns,
           coaches: r.coaches,
           lastSession: r.lastSession,

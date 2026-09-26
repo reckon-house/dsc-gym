@@ -244,6 +244,12 @@ model Session {
   // Set when this session came from a Group's recurring schedule.
   groupId String?
 
+  /// Set when a coach has taken attendance for this session. Distinguishes
+  /// "everyone came" from "nobody recorded anything", which the attendee rows
+  /// alone cannot — an unmarked row looks the same either way.
+  attendanceTakenAt   DateTime?
+  attendanceTakenById String?
+
   gym             Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
   trainer         Trainer           @relation(fields: [trainerId], references: [id])
   athlete         Athlete?          @relation(fields: [athleteId], references: [id])
@@ -272,8 +278,18 @@ model SessionAttendee {
 
   createdAt DateTime @default(now())
 
+  /// What actually happened. Null = not recorded yet; "present" or "no_show"
+  /// once a coach takes attendance. Being on the roster is the plan; this is
+  /// the record, and the two are allowed to disagree.
+  status     String?
+  /// Came without being booked — added to the session after it started.
+  dropIn     Boolean   @default(false)
+  markedAt   DateTime?
+  markedById String?
+
   @@unique([sessionId, athleteId])
   @@index([athleteId])
+  @@index([athleteId, status])
 }
 
 model CheckIn {

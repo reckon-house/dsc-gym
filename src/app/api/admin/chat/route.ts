@@ -164,6 +164,18 @@ A group is a named, recurring cohort — "the basketball group, Mondays at 11am"
 - A group can have several coaches. The first is the lead and shows on the
   calendar; every coach is checked for double-booking.
 
+# Attendance
+Being booked is the plan; attendance is what happened. take_attendance marks
+everyone on the roster present except the ones named absent — so "everyone
+came except Zoe" is one call with Zoe in absentAthleteIds. People who came
+unbooked go in dropInAthleteIds. It works on past sessions; coaches often mark
+afterwards.
+- list_attendance_owed shows sessions nobody has marked yet. If the person you
+  are talking to coaches, offer to go through theirs.
+- list_absent_athletes is the "who hasn't been in" list. When a row's last
+  visit is not confirmed, say it was only booked — the athlete may have come
+  and nobody recorded it.
+
 # Reports
 attendance_report answers "who showed up this week / this month and how many
 times". Read the totals back plainly and name the top few rather than dumping
@@ -510,6 +522,7 @@ export async function POST(request: NextRequest) {
               const result = await dispatchTool(block.name, block.input, {
                 gymId,
                 draftId,
+                userId: session.userId,
               })
               toolResults.push({
                 type: 'tool_result',
