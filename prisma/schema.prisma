@@ -103,6 +103,7 @@ model Trainer {
   groupCoaches    GroupCoach[]
   availability    TrainerAvailability[]
   exceptions      AvailabilityException[]
+  timeOffRequests TimeOffRequest[]
   bookingRequests BookingRequest[]
 
   @@index([gymId])
@@ -179,6 +180,12 @@ model Athlete {
   emailVerificationToken     String?   @unique
   emailVerificationExpiresAt DateTime?
   waiverSignedAt             DateTime?
+  // One-time signing link for profiles staff created (no signup form, so no
+  // waiver). Only the SHA-256 of the token is stored; the link itself lives
+  // in the email. Cleared once signed.
+  waiverTokenHash            String?   @unique
+  waiverTokenExpiresAt       DateTime?
+  waiverLinkSentAt           DateTime?
   archived                   Boolean   @default(false)
   // Promotional only. Reminders and booking confirmations are transactional
   // and ignore this flag; blasts must respect it.
@@ -197,6 +204,7 @@ model Athlete {
   groupMemberships   GroupMember[]
   groupJoinRequests  GroupJoinRequest[]
   recoveryVisits     RecoveryVisit[]
+  healthNotes        HealthNote[]
   createdAt          DateTime                 @default(now())
 
   @@index([gymId])
@@ -243,6 +251,11 @@ model Session {
 
   // Set when this session came from a Group's recurring schedule.
   groupId String?
+
+  /// Where it happens. Null on a group session means "wherever the group
+  /// meets" — read it through effectiveLocation(), never directly, so a
+  /// group moving gyms moves its sessions with it.
+  location String?
 
   /// Set when a coach has taken attendance for this session. Distinguishes
   /// "everyone came" from "nobody recorded anything", which the attendee rows
@@ -585,6 +598,9 @@ model Group {
   capacity      Int?
   /// One or two lines for parents: who this group is for.
   description   String?
+  /// Which gym it meets at: a name from Gym.locationsJson ("Celina",
+  /// "McKinney"). Its sessions inherit this unless they set their own.
+  location      String?
 
   members      GroupMember[]
   coaches      GroupCoach[]
@@ -727,4 +743,60 @@ model RateLimit {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+/// A coach asking for time off. Nothing is blocked while it is pending; on
+/// approval the days become AvailabilityException rows (isAvailable: false),
+/// which is what actually stops booking — the same mechanism as "Zeke is off
+/// Friday" typed into the scheduler. exceptionIds remembers which rows this
+/// request created so cancelling an approved request removes exactly those.
+model TimeOffRequest {
+  id            String    @id @default(cuid())
+  gymId         String
+  trainerId     String
+  trainer       Trainer   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  startDate     DateTime  @db.Date
+  endDate       DateTime  @db.Date
+  /// Both null = whole days. Only allowed when startDate == endDate.
+  startMinute   Int?
+  endMinute     Int?
+  reason        String?
+  /// pending | approved | declined | cancelled
+  status        String    @default("pending")
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  exceptionIds  String[]  @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([gymId, status])
+  @@index([trainerId, startDate])
+}
+
+/// Injuries, physical therapy and conditions a coach should know about.
+/// Staff and the athlete's own family can read and edit these; nothing else
+/// does (not other families, not the public MCP tools). "Past injury" is an
+/// injury with active = false, so resolving one keeps the history.
+model HealthNote {
+  id            String   @id @default(cuid())
+  gymId         String
+  athleteId     String
+  athlete       Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  /// injury | pt | condition
+  kind          String
+  title         String
+  details       String?
+  /// Free text on purpose ("since August", "2024"): families rarely know a date.
+  since         String?
+  active        Boolean  @default(true)
+  /// staff | family — who wrote it. Families can only delete their own.
+  createdByRole String
+  createdByName String?
+  updatedByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([athleteId, active])
 }

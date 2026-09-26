@@ -14,7 +14,10 @@
 //     so failures are logged loudly instead.
 
 import { db } from '@/lib/db'
-import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildStandingSlotDigestEmail, buildSessionIcs, buildGroupJoinRequestEmail, buildGroupJoinApprovedEmail, buildGroupJoinDeclinedEmail } from '@/lib/email'
+import { sendEmail, buildSessionBookedEmail, buildSessionReminderEmail, buildStandingSlotDigestEmail, buildSessionIcs, buildGroupJoinRequestEmail, buildGroupJoinApprovedEmail, buildGroupJoinDeclinedEmail,
+  buildTimeOffRequestEmail,
+  buildTimeOffDecidedEmail,
+} from '@/lib/email'
 import { sendSms, smsConfigured } from '@/lib/sms'
 import { getGymTimezone } from '@/lib/scheduling/engine'
 import { formatInZone, formatTime } from '@/lib/scheduling/timezone'
@@ -720,5 +723,82 @@ export async function notifyGroupJoinResolved(
     await settle(logId, delivered ? 'sent' : 'failed')
   } catch (err) {
     console.error('[notify] notifyGroupJoinResolved failed', requestId, err)
+  }
+}
+
+/** Owner-facing: a coach asked for time off. */
+export async function notifyTimeOffRequested(requestId: string): Promise<void> {
+  try {
+    const req = await db.timeOffRequest.findUnique({
+      where: { id: requestId },
+      include: { trainer: { select: { user: { select: { name: true } } } } },
+    })
+    if (!req || req.status !== 'pending') return
+    const { describeTimeOff, sessionsDuring } = await import('@/lib/timeOff')
+    const booked = await sessionsDuring(
+      req.gymId, req.trainerId, req.startDate, req.endDate, req.startMinute, req.endMinute
+    )
+    const bookedLine = booked.length
+      ? `They're on ${booked.length} session${booked.length === 1 ? '' : 's'} then, which would need covering.`
+      : 'Nothing is booked for them then.'
+
+    for (const admin of await adminRecipients()) {
+      const logId = await claim({
+        gymId: req.gymId,
+        dedupeKey: `timeoff_req:email:${req.id}:${admin.email}`,
+        type: 'time_off_requested',
+        channel: 'email',
+        recipient: admin.email,
+        trainerId: req.trainerId,
+      })
+      if (!logId) continue
+      const tpl = buildTimeOffRequestEmail({
+        coachName: req.trainer.user.name,
+        whenLabel: describeTimeOff(req),
+        reason: req.reason,
+        bookedLine,
+        adminUrl: `${baseUrl()}/admin`,
+        logoUrl: process.env.EMAIL_LOGO_URL,
+      })
+      const { delivered } = await sendEmail({ to: admin.email, ...tpl })
+      await settle(logId, delivered ? 'sent' : 'failed')
+    }
+  } catch (err) {
+    console.error('[notify] notifyTimeOffRequested failed', requestId, err)
+  }
+}
+
+/** Coach-facing: their request was approved or declined. */
+export async function notifyTimeOffDecided(requestId: string): Promise<void> {
+  try {
+    const req = await db.timeOffRequest.findUnique({
+      where: { id: requestId },
+      include: { trainer: { select: { user: { select: { name: true, email: true } } } } },
+    })
+    if (!req || (req.status !== 'approved' && req.status !== 'declined')) return
+    const to = req.trainer.user.email
+    if (!isDeliverableEmail(to)) return
+    const { describeTimeOff } = await import('@/lib/timeOff')
+    const logId = await claim({
+      gymId: req.gymId,
+      dedupeKey: `timeoff_decided:email:${req.id}:${req.status}`,
+      type: 'time_off_decided',
+      channel: 'email',
+      recipient: to,
+      trainerId: req.trainerId,
+    })
+    if (!logId) return
+    const tpl = buildTimeOffDecidedEmail({
+      firstName: req.trainer.user.name.split(' ')[0],
+      whenLabel: describeTimeOff(req),
+      approved: req.status === 'approved',
+      note: req.decisionNote,
+      url: `${baseUrl()}/trainer`,
+      logoUrl: process.env.EMAIL_LOGO_URL,
+    })
+    const { delivered } = await sendEmail({ to, ...tpl })
+    await settle(logId, delivered ? 'sent' : 'failed')
+  } catch (err) {
+    console.error('[notify] notifyTimeOffDecided failed', requestId, err)
   }
 }

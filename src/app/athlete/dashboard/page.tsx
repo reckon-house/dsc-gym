@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { HealthNotes } from '@/components/HealthNotes'
 import Image from 'next/image'
 
 interface UpcomingSession {
@@ -68,6 +69,7 @@ interface OpenGroup {
   id: string
   name: string
   description: string | null
+  location?: string | null
   dayOfWeek: number
   startMinute: number
   duration: number
@@ -350,6 +352,17 @@ export default function AthleteDashboard() {
             activeAthleteId={athlete?.id ?? ''}
             onChanged={reloadGroups}
           />
+        )}
+
+        {/* Injuries / PT / conditions, for the active athlete. */}
+        {athlete?.id && (
+          <section className="mt-8">
+            <HealthNotes
+              base="/api/athletes/me/health"
+              query={`?athleteId=${athlete.id}`}
+              audience="family"
+            />
+          </section>
         )}
 
         {/* Meet the team */}
@@ -932,6 +945,7 @@ function OpenClasses({
                   <div className="font-mono text-sm text-black/70 mt-0.5">
                     {FULL_DAYS[g.dayOfWeek]}s · {fmtMinuteOfDay(g.startMinute)} · {g.duration} min
                   </div>
+                  {g.location && <div className="text-sm text-black/50 mt-0.5">at {g.location}</div>}
                   {g.coachNames.length > 0 && (
                     <div className="text-sm text-black/50 mt-0.5">
                       with {g.coachNames.map((n) => n.split(' ')[0]).join(' & ')}

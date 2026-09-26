@@ -20,6 +20,8 @@ const PUBLIC_PATHS = [
   '/api/athletes/me',
   '/api/athletes/parse-registration',
   '/api/waiver',
+  // Waiver signing links: the token in the URL is the credential.
+  '/waiver/',
   '/api/gym',
   '/showcase',
   // OAuth + MCP discovery & flow — these auth themselves (bearer / PKCE)

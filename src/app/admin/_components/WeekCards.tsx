@@ -24,6 +24,24 @@ export interface CardMeeting {
   trainerIds: string[]
 }
 
+/** An approved day (or part-day) a coach is off. Dates are YYYY-MM-DD. */
+export interface CardTimeOff {
+  id: string
+  trainerId: string
+  trainerName: string
+  startDate: string
+  endDate: string
+  startMinute: number | null
+  endMinute: number | null
+}
+
+function offClock(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h >= 12 ? 'pm' : 'am'}`
+}
+
 /** A session or a meeting, flattened so a day can show one time-ordered list. */
 interface DayItem {
   id: string
@@ -31,7 +49,7 @@ interface DayItem {
   time: string
   label: string
   aside: string
-  kind: 'session' | 'meeting'
+  kind: 'session' | 'meeting' | 'off'
   cancelled: boolean
 }
 
@@ -40,6 +58,8 @@ interface Props {
   sessions: CardSession[]
   /** Company-calendar meetings, drawn alongside sessions. */
   meetings?: CardMeeting[]
+  /** Approved coach time off, drawn first on each day it covers. */
+  timeOff?: CardTimeOff[]
   hrefFor: (date: Date) => string // e.g., date => `/admin/calendar/${dateKey(date)}`
   onWeekChange: (start: Date) => void
 }
@@ -75,6 +95,7 @@ export function WeekCards({
   weekStart,
   sessions,
   meetings = [],
+  timeOff = [],
   hrefFor,
   onWeekChange,
 }: Props) {
@@ -125,9 +146,27 @@ export function WeekCards({
       })
     }
 
+    for (const d of days) {
+      const ymd = dateKey(d)
+      for (const t of timeOff) {
+        if (ymd < t.startDate || ymd > t.endDate) continue
+        const partial = t.startMinute !== null && t.endMinute !== null
+        ;(map[d.toDateString()] ??= []).push({
+          id: `${t.id}:${ymd}`,
+          // Whole days sort to the top of the day.
+          at: d.getTime() + (partial ? t.startMinute! * 60_000 : -1),
+          time: partial ? `${offClock(t.startMinute!)}–${offClock(t.endMinute!)}` : 'All day',
+          label: `${t.trainerName.split(' ')[0]} off`,
+          aside: 'Off',
+          kind: 'off',
+          cancelled: false,
+        })
+      }
+    }
+
     for (const k of Object.keys(map)) map[k].sort((a, b) => a.at - b.at)
     return map
-  }, [sessions, meetings])
+  }, [sessions, meetings, timeOff, days])
 
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -178,7 +217,7 @@ export function WeekCards({
           // time, not training, and folding them in would overstate the day.
           // They get their own line and their own pill style instead.
           const count = list.filter((i) => i.kind === 'session').length
-          const meetingCount = list.length - count
+          const meetingCount = list.filter((i) => i.kind === 'meeting').length
           // Smaller cards = tighter preview. Today spans full width so it
           // can still show more.
           const previewLimit = isToday ? 3 : 2
@@ -240,7 +279,19 @@ export function WeekCards({
               {list.length > 0 && (
                 <div className="space-y-1.5">
                   {preview.map((item) =>
-                    item.kind === 'meeting' ? (
+                    item.kind === 'off' ? (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl px-3 py-1.5 flex items-baseline justify-between gap-2 ${
+                          isToday ? 'bg-violet-300/30 text-white' : 'bg-violet-100 text-violet-950'
+                        }`}
+                      >
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="font-mono text-[10px] opacity-75 shrink-0">{item.time}</span>
+                          <span className="font-semibold text-xs truncate">{item.label}</span>
+                        </div>
+                      </div>
+                    ) : item.kind === 'meeting' ? (
                       // Outlined rather than filled, so a glance separates
                       // "staff are busy" from "an athlete is training".
                       <div

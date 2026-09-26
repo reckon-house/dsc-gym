@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { validateBooking } from '@/lib/scheduling/engine'
+import { resolveLocation } from '@/lib/locations'
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
@@ -26,6 +27,9 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   }
+
+  const loc = await resolveLocation(DEFAULT_GYM_ID, body.location)
+  if (!loc.ok) return NextResponse.json({ success: false, error: loc.error }, { status: 400 })
 
   const at = new Date(scheduledAt)
   const dur = typeof duration === 'number' ? duration : 60
@@ -53,6 +57,7 @@ export async function POST(request: NextRequest) {
       scheduledAt: at,
       duration: dur,
       notes: typeof notes === 'string' ? notes : null,
+      location: loc.value,
       // This route used to create no attendee row at all, unlike
       // POST /api/sessions. That left admin-made sessions invisible to
       // anything that reads the roster from SessionAttendee.

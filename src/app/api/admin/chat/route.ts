@@ -81,7 +81,8 @@ async function loadStaticContext(gymId: string): Promise<string> {
     const open = g.openForSignup
       ? `, OPEN for signups${g.capacity !== null ? ` (${g.members.length}/${g.capacity})` : ''}`
       : ''
-    return `- ${g.name} (id: ${g.id}): ${when}, ${g.members.length} members, coached by ${coaches}${open}`
+    const where = g.location ? ` at ${g.location}` : ''
+    return `- ${g.name} (id: ${g.id}): ${when}${where}, ${g.members.length} members, coached by ${coaches}${open}`
   })
 
   // Surfaced in the cached prefix so the owner can just ask "anyone waiting?"
@@ -175,6 +176,25 @@ afterwards.
 - list_absent_athletes is the "who hasn't been in" list. When a row's last
   visit is not confirmed, say it was only booked — the athlete may have come
   and nobody recorded it.
+
+# Locations
+DSC trains at two gyms, Celina and McKinney. Groups can be tagged with one and
+their sessions follow the group; a single session can be tagged on its own
+(create_open_class / update via the calendar). list_sessions takes a location
+filter for "what's on at McKinney Thursday?". Don't guess a location you
+weren't told — leave it unset.
+
+# Time off and waivers
+- Coaches request time off in the app; list_time_off shows what is waiting.
+  When you read a request back, say what that coach is booked on in the
+  window — that is what the owner needs to decide. decide_time_off only on an
+  explicit yes/no from the owner.
+- "Zeke is out Friday" from the owner is add_time_off (saved as approved), not
+  a request. After approving or adding, name any sessions still booked in that
+  window; nothing moves them automatically.
+- Athletes created by staff never signed the waiver. send_waiver_link makes a
+  one-time signing link; if it could not be emailed, give the owner the link
+  to text.
 
 # Reports
 attendance_report answers "who showed up this week / this month and how many

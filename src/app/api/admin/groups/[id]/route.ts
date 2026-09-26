@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
+import { resolveLocation } from '@/lib/locations'
 
 export async function GET(
   _request: NextRequest,
@@ -74,6 +75,13 @@ export async function PATCH(
     // never what someone means when they clear the field.
     data.capacity =
       body.capacity === null || body.capacity === '' ? null : Number(body.capacity)
+  }
+
+  if (body.location !== undefined) {
+    // Sessions that inherit (location null) move with the group automatically.
+    const loc = await resolveLocation(group.gymId, body.location)
+    if (!loc.ok) return NextResponse.json({ success: false, error: loc.error }, { status: 400 })
+    data.location = loc.value
   }
 
   try {

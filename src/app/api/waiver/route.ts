@@ -60,6 +60,21 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      // The kiosk signature used to be recorded but never reach the profile,
+      // so an athlete who signed at the front desk still showed "Waiver
+      // pending" to staff.
+      // Only when the email is unambiguous: siblings share a parent's email,
+      // and the kiosk doesn't say which child is signing.
+      const sharing = athlete
+        ? await db.athlete.count({ where: { email: email.toLowerCase(), archived: false } })
+        : 0
+      if (athlete && sharing === 1 && !athlete.waiverSignedAt) {
+        await db.athlete.update({
+          where: { id: athlete.id },
+          data: { waiverSignedAt: waiver.signedAt, waiverTokenHash: null, waiverTokenExpiresAt: null },
+        })
+      }
+
       return NextResponse.json({
         success: true,
         waiver: {

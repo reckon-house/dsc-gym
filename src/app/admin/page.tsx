@@ -41,6 +41,14 @@ interface ClassRequest {
   note: string | null
 }
 
+interface TimeOffPending {
+  id: string
+  trainerName: string
+  label: string
+  reason: string | null
+  booked?: { id: string; when: string; who: string }[]
+}
+
 interface BookingRequest {
   id: string
   athleteName: string
@@ -92,6 +100,10 @@ export default function AdminHome() {
   const [lapsed, setLapsed] = useState(0)
   const [owed, setOwed] = useState<{ id: string; scheduledAt: string; coach: string; label: string }[]>([])
   const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
+  const [timeOff, setTimeOff] = useState<TimeOffPending[]>([])
+  // Lives here, not in the box: approving the last request empties the list,
+  // and the "still booked" warning must outlive it.
+  const [timeOffLeftover, setTimeOffLeftover] = useState<Leftover | null>(null)
   const [extraVisits, setExtraVisits] = useState<
     { athleteId: string; name: string; extraVisits: number }[]
   >([])
@@ -104,15 +116,22 @@ export default function AdminHome() {
   >(null)
 
   const loadAuxiliary = useCallback(async () => {
-    const [t, w, u, br, ev, gr, ab, ow] = await Promise.all([
-      fetch('/api/trainers').then((r) => r.json()),
-      fetch('/api/walkins').then((r) => r.json()),
-      fetch('/api/athletes?unassigned=true').then((r) => r.json()),
-      fetch('/api/admin/booking-requests').then((r) => r.json()),
-      fetch('/api/admin/attendance/extra?days=30').then((r) => r.json()),
-      fetch('/api/admin/group-requests').then((r) => r.json()),
-      fetch('/api/admin/attendance/absent?days=14').then((r) => r.json()),
-      fetch('/api/attendance/owed').then((r) => r.json()),
+    // One broken panel must not blank the rest: before this, any single
+    // failing endpoint rejected the whole Promise.all and every alert vanished.
+    const json = (r: Response) => r.json().catch(() => ({ success: false }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each panel checks its own shape
+    type Res = { success: boolean; data?: any }
+    const safe = (p: Promise<Res>): Promise<Res> => p.catch(() => ({ success: false }))
+    const [t, w, u, br, ev, gr, ab, ow, to] = await Promise.all([
+      safe(fetch('/api/trainers').then(json)),
+      safe(fetch('/api/walkins').then(json)),
+      safe(fetch('/api/athletes?unassigned=true').then(json)),
+      safe(fetch('/api/admin/booking-requests').then(json)),
+      safe(fetch('/api/admin/attendance/extra?days=30').then(json)),
+      safe(fetch('/api/admin/group-requests').then(json)),
+      safe(fetch('/api/admin/attendance/absent?days=14').then(json)),
+      safe(fetch('/api/attendance/owed').then(json)),
+      safe(fetch('/api/time-off?status=pending').then(json)),
     ])
     if (t.success) setTrainers(t.data)
     if (w.success) setWalkIns(w.data)
@@ -125,6 +144,7 @@ export default function AdminHome() {
       setLapsed(ab.data.lapsed ?? 0)
     }
     if (ow.success) setOwed(ow.data)
+    if (to.success) setTimeOff(to.data)
   }, [])
 
   function summarizeRequest(r: BookingRequest): RequestSummary {
@@ -289,8 +309,18 @@ export default function AdminHome() {
         classRequests.length > 0 ||
         extraVisits.length > 0 ||
         absent.length > 0 ||
+        timeOff.length > 0 ||
+        timeOffLeftover !== null ||
         owed.length > 0) && (
         <div className="px-4 space-y-2 pb-2">
+          {(timeOff.length > 0 || timeOffLeftover) && (
+            <TimeOffBox
+              requests={timeOff}
+              onChanged={loadAuxiliary}
+              leftover={timeOffLeftover}
+              setLeftover={setTimeOffLeftover}
+            />
+          )}
           {classRequests.length > 0 && (
             <ClassRequestsBox
               requests={classRequests}
@@ -743,6 +773,127 @@ function ClassRequestsBox({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Coach time-off requests. Each row shows what the coach is booked on in that
+ * window, because that is the real question behind approving: who covers?
+ * Approving blocks new bookings; the listed sessions stay put until someone
+ * moves them.
+ */
+type Leftover = { coach: string; rows: { id: string; when: string; who: string }[] }
+
+function TimeOffBox({
+  requests,
+  onChanged,
+  leftover,
+  setLeftover,
+}: {
+  requests: TimeOffPending[]
+  onChanged: () => void
+  leftover: Leftover | null
+  setLeftover: (l: Leftover | null) => void
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function decide(r: TimeOffPending, action: 'approve' | 'decline') {
+    let note: string | null = null
+    if (action === 'decline') {
+      note = prompt(`Decline ${r.trainerName}'s time off? Add a note for them (optional):`, '')
+      if (note === null) return
+    }
+    setBusy(r.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/time-off/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note }),
+      })
+      const d = await res.json()
+      if (!d.success) {
+        setError(d.error ?? 'Could not save.')
+        return
+      }
+      if (action === 'approve' && d.data?.stranded?.length) {
+        setLeftover({ coach: r.trainerName, rows: d.data.stranded })
+      }
+      onChanged()
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="px-4 py-3 rounded-2xl bg-sky-50 border border-sky-200 max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-2 h-2 rounded-full bg-sky-600" aria-hidden />
+        <span className="dsc-label text-sky-900">
+          Time off {requests.length ? `requests · ${requests.length}` : ''}
+        </span>
+      </div>
+      {leftover && (
+        <div className="bg-white rounded-2xl p-3 mb-2 text-sm">
+          <div className="text-black">
+            Approved. {leftover.coach} is still on {leftover.rows.length} session
+            {leftover.rows.length === 1 ? '' : 's'} — move or reassign:
+          </div>
+          <ul className="mt-1 text-black/60 text-xs space-y-0.5">
+            {leftover.rows.map((b) => (
+              <li key={b.id}>
+                {b.when} · {b.who}
+              </li>
+            ))}
+          </ul>
+          <button onClick={() => setLeftover(null)} className="dsc-label text-black/40 mt-2">
+            Dismiss
+          </button>
+        </div>
+      )}
+      <div className="space-y-2">
+        {requests.map((r) => (
+          <div key={r.id} className="bg-white rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-black text-sm">
+                <span className="font-medium">{r.trainerName}</span>
+                <span className="text-black/50"> · </span>
+                <span>{r.label}</span>
+              </div>
+              {r.reason && <div className="text-xs text-black/70 mt-0.5 italic truncate">&ldquo;{r.reason}&rdquo;</div>}
+              <div className={`text-xs mt-0.5 ${r.booked?.length ? 'text-amber-800' : 'text-black/50'}`}>
+                {r.booked?.length
+                  ? `On ${r.booked.length} session${r.booked.length === 1 ? '' : 's'} then: ${r.booked
+                      .slice(0, 3)
+                      .map((b) => `${b.when} (${b.who})`)
+                      .join('; ')}${r.booked.length > 3 ? '…' : ''}`
+                  : 'Nothing booked then.'}
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => decide(r, 'approve')}
+                disabled={busy === r.id}
+                className="h-8 px-3 bg-black text-white text-xs rounded-full dsc-headline disabled:opacity-40"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => decide(r, 'decline')}
+                disabled={busy === r.id}
+                className="h-8 px-3 border border-black/20 text-black/70 text-xs rounded-full disabled:opacity-40"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {error && <div className="text-xs text-red-700 mt-2">{error}</div>}
     </div>
   )
 }
