@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { deleteHealthNote, serializeHealthNote, updateHealthNote } from '@/lib/health'
+import { deleteHealthNote, serializeStaffHealthNote, updateHealthNote } from '@/lib/health'
 
 type Ctx = { params: Promise<{ id: string; noteId: string }> }
 
@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   const body = await request.json().catch(() => ({}))
   const r = await updateHealthNote(id, noteId, body, { role: 'staff', name: user.name })
   if (!r.ok) return NextResponse.json({ success: false, error: r.error }, { status: 400 })
-  return NextResponse.json({ success: true, data: serializeHealthNote(r.note) })
+  return NextResponse.json({ success: true, data: serializeStaffHealthNote(r.note) })
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {

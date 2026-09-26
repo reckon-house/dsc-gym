@@ -30,6 +30,7 @@ interface Staff {
   reachable: boolean
   isSelf: boolean
   isOwner: boolean
+  isPT: boolean
 }
 
 export default function StaffPage() {
@@ -205,6 +206,7 @@ function Row({ s, onEdit, dim }: { s: Staff; onEdit: () => void; dim?: boolean }
           <div className="dsc-label text-black/50 mt-1">
             {s.isOwner ? 'Owner' : s.role === 'ADMIN' ? 'Admin' : 'Trainer'}
             {s.isCoach ? ' · coach' : ''}
+            {s.isPT ? ' · PT' : ''}
             {s.isCoach && s.athletes > 0 ? ` · ${s.athletes} athletes` : ''}
             {!s.reachable && <span className="text-amber-700"> · no working email</span>}
           </div>
@@ -346,6 +348,7 @@ function EditSheet({
   const [role, setRole] = useState<'ADMIN' | 'TRAINER'>(s.role)
   const [isCoach, setIsCoach] = useState(s.isCoach)
   const [owner, setOwner] = useState(s.isOwner)
+  const [pt, setPt] = useState(s.isPT)
   const [saving, setSaving] = useState(false)
 
   const changed =
@@ -353,7 +356,8 @@ function EditSheet({
     email !== s.email ||
     role !== s.role ||
     isCoach !== s.isCoach ||
-    owner !== s.isOwner
+    owner !== s.isOwner ||
+    pt !== s.isPT
 
   if (s.isOwner && !meOwner && !s.isSelf) {
     return (
@@ -400,6 +404,21 @@ function EditSheet({
         </div>
       </Field>
 
+      <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
+        <input
+          type="checkbox"
+          checked={pt}
+          onChange={(e) => setPt(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-black shrink-0"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-black">Physical therapist</span>
+          <span className="block text-xs text-black/50 mt-0.5">
+            Gets injuries coaches flag for follow-up, and can mark them cleared.
+          </span>
+        </span>
+      </label>
+
       {meOwner && role === 'ADMIN' && (
         <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
           <input
@@ -437,7 +456,14 @@ function EditSheet({
         onClick={async () => {
           setSaving(true)
           await onSave(
-            { name, email, role, isCoach, ...(owner !== s.isOwner && role === 'ADMIN' ? { isOwner: owner } : {}) },
+            {
+              name,
+              email,
+              role,
+              isCoach,
+              ...(pt !== s.isPT ? { isPT: pt } : {}),
+              ...(owner !== s.isOwner && role === 'ADMIN' ? { isOwner: owner } : {}),
+            },
             'Updated'
           )
           setSaving(false)

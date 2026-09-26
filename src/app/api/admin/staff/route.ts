@@ -28,6 +28,7 @@ export async function GET() {
       role: true,
       active: true,
       isOwner: true,
+      isPT: true,
       trainer: {
         select: {
           id: true,
@@ -48,6 +49,7 @@ export async function GET() {
       role: u.role,
       active: u.active,
       isOwner: u.isOwner,
+      isPT: u.isPT,
       isCoach: Boolean(u.trainer) && !u.trainer!.archived,
       hasTrainerRecord: Boolean(u.trainer),
       athletes: u.trainer?._count.athletes ?? 0,

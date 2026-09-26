@@ -925,3 +925,43 @@ ${args.url}
   })
   return { subject, text, html }
 }
+
+/** Staff-only: an injury flagged for the PT, or a reply in its thread. */
+export function buildInjuryFollowupEmail(args: {
+  kind: 'flagged' | 'reply'
+  athleteName: string
+  injury: string
+  fromName: string
+  message: string | null
+  url: string
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject =
+    args.kind === 'flagged'
+      ? `Injury follow-up: ${args.athleteName} — ${args.injury}`
+      : `${args.fromName} replied: ${args.athleteName} — ${args.injury}`
+  const intro =
+    args.kind === 'flagged'
+      ? `${args.fromName} flagged ${args.athleteName}'s injury for PT follow-up: ${args.injury}.${args.message ? ` "${args.message}"` : ''}`
+      : `${args.fromName} replied about ${args.athleteName} (${args.injury}): "${args.message ?? ''}"`
+
+  const text = `${intro}
+
+Open the follow-up: ${args.url}
+
+— DSC (staff only)`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Injury follow-up · staff only',
+    logoUrl: args.logoUrl,
+    headline: args.kind === 'flagged' ? 'PT follow-up' : 'New reply',
+    intro,
+    buttonLabel: 'Open the follow-up',
+    buttonUrl: args.url,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.url,
+    footnote: 'Staff only — families don’t see this conversation.',
+  })
+  return { subject, text, html }
+}

@@ -2241,6 +2241,7 @@ export async function dispatchTool(
           details: n.details,
           since: n.since,
           current: n.active,
+          ptFollowUp: n.ptStatus,
         })),
         athletesWithNothingOnFile: ids.length - new Set(rows.map((r) => r.athleteId)).size,
       }

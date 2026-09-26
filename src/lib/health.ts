@@ -89,6 +89,11 @@ export async function updateHealthNote(athleteId: string, noteId: string, input:
 export async function deleteHealthNote(athleteId: string, noteId: string, by: Author) {
   const existing = await db.healthNote.findUnique({ where: { id: noteId } })
   if (!existing || existing.athleteId !== athleteId) return { ok: false as const, error: 'Note not found.' }
+  // Once the PT is involved there's a staff record attached; a family delete
+  // would cascade it away. They can still mark it resolved.
+  if (by.role === 'family' && existing.ptStatus) {
+    return { ok: false as const, error: 'The gym is following up on this one — mark it resolved instead.' }
+  }
   if (by.role === 'family' && existing.createdByRole !== 'family') {
     return { ok: false as const, error: 'A coach added this one — mark it resolved instead, or ask the gym to remove it.' }
   }
@@ -127,5 +132,20 @@ export function serializeHealthNote(n: Awaited<ReturnType<typeof listHealthNotes
     createdByName: n.createdByName,
     updatedByName: n.updatedByName,
     updatedAt: n.updatedAt.toISOString(),
+  }
+}
+
+/**
+ * Staff view: the family fields plus PT follow-up status and thread size.
+ * Never use this for the family routes.
+ */
+export function serializeStaffHealthNote(
+  n: Awaited<ReturnType<typeof listHealthNotes>>[number] & { _count?: { comments: number } }
+) {
+  return {
+    ...serializeHealthNote(n),
+    ptStatus: n.ptStatus as 'flagged' | 'following' | 'cleared' | null,
+    flaggedByName: n.flaggedByName,
+    commentCount: n._count?.comments ?? 0,
   }
 }
