@@ -13,6 +13,9 @@ import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved, notifyTimeOffDecided } from '@/lib/notify'
 import { approveTimeOff, declineTimeOff, listTimeOff, requestTimeOff, sessionsDuring } from '@/lib/timeOff'
 import { createWaiverLink } from '@/lib/waiverLink'
+import { balances, recordPayment, revenueReport } from '@/lib/money'
+import { isOwner } from '@/lib/owner'
+import { money as fmtMoney } from '@/lib/formatMoney'
 import { addLeadNote, convertLead, createLead, leadSummary, listLeads, updateLead, LEAD_STATUSES, type LeadStatus } from '@/lib/leads'
 import { effectiveLocation, resolveLocation, sessionLocationWhere } from '@/lib/locations'
 import { hashPassword, MIN_PASSWORD_LENGTH, generateTempPassword } from '@/lib/auth'
@@ -835,6 +838,42 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'revenue_report',
+    description:
+      "OWNERS ONLY. Earned revenue (athletes who came × the price sheet), payments collected, revenue per coach hour, and breakdowns by class type, coach and class, for a date range. Say plainly that 'earned' is priced from attendance and that visits with no attendance taken are estimates. Refuses for non-owners.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'YYYY-MM-DD, inclusive, gym-local.' },
+        to: { type: 'string', description: 'YYYY-MM-DD, inclusive, gym-local.' },
+      },
+      required: ['from', 'to'],
+    },
+  },
+  {
+    name: 'list_balances',
+    description:
+      "OWNERS ONLY. Who's behind on paying: per-session families' balances (visits × price − payments, since the billing start date) and monthly members past their paid-through date.",
+    input_schema: { type: 'object', properties: { everyone: { type: 'boolean', description: 'Include people who are paid up.' } } },
+  },
+  {
+    name: 'record_payment',
+    description:
+      "OWNERS ONLY. Record money received outside the app ('Maya's mom Venmo'd $120'). For monthly members pass coversThrough to move their paid-through date. Confirm the athlete and amount with the owner if there is any doubt.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        athleteId: { type: 'string' },
+        amount: { type: 'number', description: 'Dollars.' },
+        paidOn: { type: 'string', description: 'YYYY-MM-DD; defaults to today.' },
+        method: { type: 'string', enum: ['cash', 'card', 'venmo', 'zelle', 'check', 'other'] },
+        note: { type: 'string' },
+        coversThrough: { type: 'string', description: 'YYYY-MM-DD, monthly members.' },
+      },
+      required: ['athleteId', 'amount'],
+    },
+  },
+  {
     name: 'add_lead',
     description:
       "Record someone interested in DSC who isn't an athlete yet (a DM, walk-in, referral, event contact) or put them on a group's waitlist. Always set followUpOn — a lead with no next step gets forgotten; default to tomorrow if the owner doesn't say. Returns possible duplicates (same phone/email as an existing lead or athlete) — mention them.",
@@ -996,6 +1035,14 @@ export async function dispatchTool(
 ): Promise<unknown> {
   const input = (rawInput ?? {}) as Record<string, unknown>
   const gymId = ctx.gymId || DEFAULT_GYM_ID
+
+  // Money is owners-only everywhere, including here: front desk is an admin
+  // too and can use this chat.
+  if (name === 'revenue_report' || name === 'list_balances' || name === 'record_payment') {
+    if (!(await isOwner(ctx.userId))) {
+      return { error: 'Money is owners-only (Jordan and Scott). Tell the person you can’t share that.' }
+    }
+  }
 
   switch (name) {
     case 'list_trainers': {
@@ -2017,6 +2064,64 @@ export async function dispatchTool(
       const r = await approveTimeOff(created.request.id, gymId, ctx.userId ?? 'chat', null)
       if (!r.ok) return { ok: false, error: r.error }
       return { ok: true, sessionsStillBooked: r.stranded.map((b) => `${b.when} · ${b.who}`) }
+    }
+
+    case 'revenue_report': {
+      const zone = await getGymTimezone(gymId)
+      const from = dateOnlyInZone(String(input.from ?? ''), zone)
+      const toDay = dateOnlyInZone(String(input.to ?? ''), zone)
+      if (!from || !toDay || toDay < from) return { error: 'from/to must be YYYY-MM-DD and in order.' }
+      const r = await revenueReport(gymId, from, new Date(toDay.getTime() + 86400_000))
+      return {
+        earned: fmtMoney(r.earnedCents + r.recoveryCents),
+        earnedFromSessions: fmtMoney(r.earnedCents),
+        recoveryRoom: fmtMoney(r.recoveryCents),
+        collected: fmtMoney(r.collectedCents),
+        notConfirmed: `${fmtMoney(r.estimatedCents)} across ${r.estimatedVisits} visits with no attendance taken`,
+        visits: r.visits,
+        coachHours: Math.round(r.coachHours * 10) / 10,
+        perCoachHour: fmtMoney(r.perCoachHourCents),
+        unpricedVisits: r.unpricedVisits,
+        compVisits: r.compVisits,
+        byClassType: r.byClassType.map((t) => ({ type: t.label, earned: fmtMoney(t.earnedCents), sessions: t.sessions, perHour: fmtMoney(t.perHourCents) })),
+        byCoach: r.byCoach.map((c) => ({ coach: c.name, earned: fmtMoney(c.earnedCents), sessions: c.sessions, perHour: fmtMoney(c.perHourCents) })),
+        topClasses: r.byClass.slice(0, 8).map((k) => ({ class: k.label, earned: fmtMoney(k.earnedCents), sessions: k.sessions, avgPerSession: fmtMoney(k.avgPerSessionCents) })),
+        ...(r.unpricedVisits ? { warning: 'Some visits have no price on the price sheet and are not counted.' } : {}),
+      }
+    }
+
+    case 'list_balances': {
+      const b = await balances(gymId)
+      const rows = input.everyone ? b.rows.filter((r) => r.plan !== 'comp') : b.rows.filter((r) => r.behind)
+      return {
+        billingStartedOn: b.startedOn ?? 'not started — per-session balances are not tracked until an owner sets a start date on the Money page',
+        people: rows.slice(0, 40).map((r) => ({
+          athleteId: r.athleteId,
+          name: r.name,
+          plan: r.plan,
+          ...(r.plan === 'per_session'
+            ? { owes: fmtMoney(r.owedCents), visits: r.visits, unconfirmedVisits: r.estimatedVisits, paid: fmtMoney(r.paidCents) }
+            : { paidThrough: r.paidThrough, daysBehind: r.daysBehind }),
+          lastPayment: r.lastPaymentOn,
+        })),
+      }
+    }
+
+    case 'record_payment': {
+      const r = await recordPayment(
+        gymId,
+        {
+          athleteId: String(input.athleteId ?? ''),
+          amount: input.amount,
+          paidOn: input.paidOn,
+          method: input.method,
+          note: input.note,
+          coversThrough: input.coversThrough,
+        },
+        ctx.userId ?? 'chat'
+      )
+      if (!r.ok) return { error: r.error }
+      return { ok: true, recorded: fmtMoney(r.payment.amountCents), for: r.payment.athleteName, paidOn: r.payment.paidOn.toISOString().slice(0, 10) }
     }
 
     case 'add_lead': {

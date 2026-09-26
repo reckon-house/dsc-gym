@@ -91,7 +91,7 @@ const LINKS: { href: string; label: string; desc: string }[] = [
 
 export default function AdminHome() {
   const router = useRouter()
-  const [user, setUser] = useState<{ name: string } | null>(null)
+  const [user, setUser] = useState<{ name: string; isOwner?: boolean } | null>(null)
   const [walkIns, setWalkIns] = useState<WalkIn[]>([])
   const [unassigned, setUnassigned] = useState<UnassignedAthlete[]>([])
   const [trainers, setTrainers] = useState<TrainerOption[]>([])
@@ -530,7 +530,10 @@ export default function AdminHome() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-3xl mx-auto mt-3">
-          {LINKS.map((l) => (
+          {[
+            ...(user?.isOwner ? [{ href: '/admin/money', label: 'Money', desc: 'Revenue, who owes, prices' }] : []),
+            ...LINKS,
+          ].map((l) => (
             <Link
               key={l.href}
               href={l.href}

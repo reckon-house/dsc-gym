@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isOwner } from '@/lib/owner'
 
 export async function GET() {
   try {
@@ -14,7 +15,8 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      user: session,
+      // isOwner read fresh so the UI can show or hide money screens.
+      user: { ...session, isOwner: await isOwner(session.userId) },
     })
   } catch (error) {
     console.error('Get session error:', error)

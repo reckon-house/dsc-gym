@@ -27,6 +27,7 @@ export async function GET() {
       email: true,
       role: true,
       active: true,
+      isOwner: true,
       trainer: {
         select: {
           id: true,
@@ -46,6 +47,7 @@ export async function GET() {
       email: u.email,
       role: u.role,
       active: u.active,
+      isOwner: u.isOwner,
       isCoach: Boolean(u.trainer) && !u.trainer!.archived,
       hasTrainerRecord: Boolean(u.trainer),
       athletes: u.trainer?._count.athletes ?? 0,

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { HealthNotes } from '@/components/HealthNotes'
+import { PriceList, usePriceList } from '@/components/PriceList'
 import Image from 'next/image'
 
 interface UpcomingSession {
@@ -100,6 +101,7 @@ function isSameDay(a: Date, b: Date) {
 }
 
 export default function AthleteDashboard() {
+  const prices = usePriceList()
   const router = useRouter()
   const [athlete, setAthlete] = useState<AthleteSession | null>(null)
   const [sessions, setSessions] = useState<UpcomingSession[]>([])
@@ -367,6 +369,14 @@ export default function AthleteDashboard() {
 
         {/* Meet the team */}
         {trainers.length > 0 && <TrainersSection trainers={trainers} />}
+
+        {/* Prices — only once the owners have made some public. */}
+        {prices && prices.items.length > 0 && (
+          <section className="mt-8">
+            <div className="dsc-label text-black/40 mb-2">Pricing</div>
+            <PriceList items={prices.items} note={prices.note} />
+          </section>
+        )}
 
         {/* What we offer */}
         {gymOverview?.services && gymOverview.services.length > 0 && (

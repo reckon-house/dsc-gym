@@ -41,24 +41,29 @@ model Gym {
 }
 
 model GymConfig {
-  id                      String   @id @default(cuid())
-  gymId                   String   @unique
-  gym                     Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  floorCap                Int      @default(2)
-  sessionLengthsJson      String   @default("[30,60]")
-  bufferMinutes           Int      @default(0)
-  allowSameTrainerSameDay Boolean  @default(true)
-  cancellationPolicyHours Int      @default(24)
-  noShowPolicy            String   @default("flag_only")
-  defaultSessionMinutes   Int      @default(60)
+  id                      String    @id @default(cuid())
+  gymId                   String    @unique
+  gym                     Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  floorCap                Int       @default(2)
+  sessionLengthsJson      String    @default("[30,60]")
+  bufferMinutes           Int       @default(0)
+  allowSameTrainerSameDay Boolean   @default(true)
+  cancellationPolicyHours Int       @default(24)
+  noShowPolicy            String    @default("flag_only")
+  defaultSessionMinutes   Int       @default(60)
   // Recovery room is billed outside the app; this is the default line price
   // used when logging a visit. Cents, so no floating-point money.
-  recoveryPriceCents      Int      @default(2500)
+  recoveryPriceCents      Int       @default(2500)
   /// Send families a morning digest too. Off by default: they already get a
   /// reminder ~24h before each session, so a same-day email is a second
   /// message about the same thing.
-  digestToFamilies        Boolean  @default(false)
-  updatedAt               DateTime @updatedAt
+  digestToFamilies        Boolean   @default(false)
+  /// Balances only count visits on or after this day. Without it, turning on
+  /// billing would bill every family for their entire history.
+  billingStartDate        DateTime? @db.Date
+  /// One line under the public price list ("Team rates on request").
+  pricingNote             String?
+  updatedAt               DateTime  @updatedAt
 }
 
 model User {
@@ -74,6 +79,9 @@ model User {
   /// resolvedBy, createdBy and the notification log all point here, and a
   /// deleted row turns "who approved this" into a dangling id.
   active       Boolean  @default(true)
+  /// Owners see money: prices, revenue, balances. Always also ADMIN. Only an
+  /// owner can grant it, and an admin who isn't one can't edit an owner.
+  isOwner      Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   trainer Trainer?
@@ -192,6 +200,11 @@ model Athlete {
   emailOptOut                Boolean   @default(false)
   // SMS requires explicit opt-in (TCPA), so it defaults to off.
   smsOptIn                   Boolean   @default(false)
+  /// per_session: owes for each visit. monthly: covered while paidThrough is
+  /// ahead. comp: never billed (staff kids, scholarships).
+  billingPlan                String    @default("per_session")
+  paidThrough                DateTime? @db.Date
+  billingNote                String?
 
   sessions           Session[]
   sessionAttendees   SessionAttendee[]
@@ -205,6 +218,7 @@ model Athlete {
   groupJoinRequests  GroupJoinRequest[]
   recoveryVisits     RecoveryVisit[]
   healthNotes        HealthNote[]
+  payments           Payment[]
   createdAt          DateTime                 @default(now())
 
   @@index([gymId])
@@ -610,6 +624,9 @@ model Group {
   /// Which gym it meets at: a name from Gym.locationsJson ("Celina",
   /// "McKinney"). Its sessions inherit this unless they set their own.
   location      String?
+  /// Per-athlete, per-session price for this group, overriding the price
+  /// sheet's group rate. Cents.
+  priceCents    Int?
 
   members      GroupMember[]
   coaches      GroupCoach[]
@@ -862,4 +879,53 @@ model LeadNote {
   createdAt DateTime @default(now())
 
   @@index([leadId, createdAt])
+}
+
+/// One line on the price sheet. Lines with a classType and unit "session" are
+/// also the rates revenue and balances are computed from; the rest (packages,
+/// memberships) are for display. isPublic controls the families' price page.
+model PriceItem {
+  id               String   @id @default(cuid())
+  gymId            String
+  name             String
+  /// private | semi_private | group — null for display-only lines.
+  classType        String?
+  /// Null = any length. A 30-minute rate and a 60-minute rate can coexist.
+  durationMinutes  Int?
+  priceCents       Int
+  /// session | month | package
+  unit             String   @default("session")
+  sessionsIncluded Int?
+  description      String?
+  isPublic         Boolean  @default(true)
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([gymId, active])
+}
+
+/// Money received, recorded by an owner. Payment happens outside the app.
+/// athleteId is SetNull, with the name kept, so deleting an athlete never
+/// deletes a financial record.
+model Payment {
+  id            String    @id @default(cuid())
+  gymId         String
+  athleteId     String?
+  athlete       Athlete?  @relation(fields: [athleteId], references: [id], onDelete: SetNull)
+  athleteName   String
+  amountCents   Int
+  paidOn        DateTime  @db.Date
+  /// cash | card | venmo | zelle | check | other
+  method        String?
+  note          String?
+  /// For monthly families: what this payment covers through.
+  coversThrough DateTime? @db.Date
+  recordedById  String?
+  voidedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([gymId, paidOn])
+  @@index([athleteId])
 }

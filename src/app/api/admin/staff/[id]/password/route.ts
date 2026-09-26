@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isOwner } from '@/lib/owner'
 import { getSession, hashPassword, checkPasswordStrength } from '@/lib/auth'
 
 export async function POST(
@@ -37,7 +38,14 @@ export async function POST(
     )
   }
 
-  const target = await db.user.findUnique({ where: { id }, select: { id: true, name: true, email: true } })
+  const target = await db.user.findUnique({ where: { id }, select: { id: true, name: true, email: true, isOwner: true } })
+  if (target?.isOwner && target.id !== session.userId && !(await isOwner(session.userId))) {
+    // Otherwise any admin could reset an owner's password and sign in as them.
+    return NextResponse.json(
+      { success: false, error: "Only an owner can reset an owner's password." },
+      { status: 403 }
+    )
+  }
   if (!target) {
     return NextResponse.json({ success: false, error: 'Staff member not found.' }, { status: 404 })
   }
