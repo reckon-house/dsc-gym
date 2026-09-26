@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AdminHeader } from '../_components/AdminHeader'
+import { gradeLabel } from '@/lib/grade'
 
 interface AthleteRow {
   id: string
@@ -12,6 +13,12 @@ interface AthleteRow {
   email: string
   emailVerified: boolean
   waiverSignedAt: string | null
+  birthdate: string | null
+  emergencyName: string | null
+  emergencyPhone: string | null
+  sports: string[]
+  gradYear: number | null
+  schoolLevel: string | null
   trainer: {
     id: string
     user: { name: string }
@@ -28,6 +35,8 @@ export default function AthletesView() {
   const [athletes, setAthletes] = useState<AthleteRow[]>([])
   const [trainers, setTrainers] = useState<TrainerOpt[]>([])
   const [q, setQ] = useState('')
+  const [missingOnly, setMissingOnly] = useState(false)
+  const [sport, setSport] = useState('')
   const [assigning, setAssigning] = useState<string | null>(null)
 
   useEffect(() => {
@@ -51,16 +60,23 @@ export default function AthletesView() {
     load()
   }, [])
 
+  const sportOptions = [...new Set(athletes.flatMap((a) => a.sports ?? []))].sort()
+  const noContact = (a: AthleteRow) => !a.emergencyName || !a.emergencyPhone
+  const missingCount = athletes.filter(noContact).length
+
   const filtered = useMemo(() => {
-    if (!q.trim()) return athletes
+    const base = athletes
+      .filter((a) => !missingOnly || !a.emergencyName || !a.emergencyPhone)
+      .filter((a) => !sport || (sport === '__none' ? !a.sports?.length : a.sports?.includes(sport)))
+    if (!q.trim()) return base
     const needle = q.toLowerCase()
-    return athletes.filter(
+    return base.filter(
       (a) =>
         a.firstName.toLowerCase().includes(needle) ||
         a.lastName.toLowerCase().includes(needle) ||
         a.email.toLowerCase().includes(needle)
     )
-  }, [athletes, q])
+  }, [athletes, q, missingOnly, sport])
 
   async function assign(athleteId: string, trainerId: string) {
     setAssigning(athleteId)
@@ -102,6 +118,36 @@ export default function AthletesView() {
           </div>
         )}
 
+        {sportOptions.length > 0 && (
+          <select
+            value={sport}
+            onChange={(e) => setSport(e.target.value)}
+            aria-label="Sport"
+            className="mb-3 w-full h-11 px-4 bg-black/[0.04] rounded-full text-sm text-black"
+          >
+            <option value="">All sports</option>
+            {sportOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+            <option value="__none">No sport entered</option>
+          </select>
+        )}
+
+        {missingCount > 0 && (
+          <button
+            onClick={() => setMissingOnly((v) => !v)}
+            className={`mb-3 w-full text-left rounded-2xl px-4 py-3 text-sm ${
+              missingOnly ? 'bg-black text-white' : 'bg-red-50 text-red-900 hover:bg-red-100'
+            }`}
+          >
+            {missingOnly
+              ? `Showing the ${missingCount} without an emergency contact — tap to show everyone`
+              : `${missingCount} athlete${missingCount === 1 ? ' has' : 's have'} no emergency contact — tap to list them`}
+          </button>
+        )}
+
         <div className="space-y-1.5">
           {filtered.map((a) => (
             <div
@@ -116,6 +162,14 @@ export default function AthletesView() {
                   <span className="truncate">
                     {a.firstName} {a.lastName}
                   </span>
+                  {noContact(a) && (
+                    <span
+                      className="dsc-label shrink-0 px-1.5 py-0.5 rounded bg-red-50 text-red-800"
+                      title="No emergency contact on file"
+                    >
+                      No emergency contact
+                    </span>
+                  )}
                   {!a.waiverSignedAt && (
                     <span
                       className="dsc-label shrink-0 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900"
@@ -125,7 +179,9 @@ export default function AthletesView() {
                     </span>
                   )}
                 </div>
-                <div className="text-sm text-black/50 truncate">{a.email}</div>
+                <div className="text-sm text-black/50 truncate">
+                  {[a.sports?.join(', '), gradeLabel(a.gradYear, a.schoolLevel)].filter(Boolean).join(' · ') || a.email}
+                </div>
               </Link>
               <div className="shrink-0">
                 {a.trainer ? (

@@ -1,5 +1,6 @@
 'use client'
 
+import { SportGradePicker } from '@/components/SportGradePicker'
 import { useState } from 'react'
 import { isMinor, parseBirthdate } from '@/lib/guardian'
 import Link from 'next/link'
@@ -30,6 +31,8 @@ export default function AthleteRegister() {
     emergencyName: '',
     emergencyPhone: '',
     emergencyRelationship: '',
+    sports: [] as string[],
+    grade: '',
   })
   // The server decides who is a minor too — this only controls what is shown.
   const isMinorAthlete = Boolean(
@@ -73,6 +76,8 @@ export default function AthleteRegister() {
           emergencyName: formData.emergencyName,
           emergencyPhone: formData.emergencyPhone,
           emergencyRelationship: formData.emergencyRelationship,
+          sports: formData.sports,
+          grade: formData.grade,
         }),
       })
       const data = await res.json()
@@ -226,6 +231,18 @@ export default function AthleteRegister() {
                   className="w-full h-14 px-6 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
                 />
               </label>
+
+              <div className="rounded-3xl bg-white/10 p-4">
+                <SportGradePicker
+                  tone="dark"
+                  sports={formData.sports}
+                  onSportsChange={(v) => setFormData({ ...formData, sports: v })}
+                  grade={formData.grade}
+                  onGradeChange={(v) => setFormData({ ...formData, grade: v })}
+                  labelClassName="dsc-label text-white/70 px-2 mb-2"
+                  inputClassName="w-full h-12 px-5 bg-white text-black text-base rounded-full placeholder:text-black/40 focus:outline-none"
+                />
+              </div>
 
               {isMinorAthlete && (
                 <div className="rounded-3xl bg-white/10 p-4 space-y-3">

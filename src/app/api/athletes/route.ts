@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
 
     const athletes = await db.athlete.findMany({
       where,
+      // Never ship credentials to the browser.
+      omit: { passwordHash: true, emailVerificationToken: true, waiverTokenHash: true },
       include: {
         _count: {
           select: {

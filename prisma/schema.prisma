@@ -202,6 +202,13 @@ model Athlete {
   smsOptIn                   Boolean   @default(false)
   /// per_session: owes for each visit. monthly: covered while paidThrough is
   /// ahead. comp: never billed (staff kids, scholarships).
+  /// Sports they play, e.g. ["Basketball", "Track & Field"].
+  sports                     String[]  @default([])
+  /// Graduation year, not grade: "7th" typed today becomes 8th next August
+  /// on its own. Read it through gradeLabel() in src/lib/grade.ts.
+  gradYear                   Int?
+  /// k12 | college | adult — null when unknown. gradYear only for k12.
+  schoolLevel                String?
   billingPlan                String    @default("per_session")
   paidThrough                DateTime? @db.Date
   billingNote                String?

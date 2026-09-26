@@ -11,6 +11,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatPhonePretty, smsHref, telHref } from '@/lib/phone'
 import { HealthNotes } from '@/components/HealthNotes'
+import { SportGradePicker } from '@/components/SportGradePicker'
+import { gradeLabel, storedToGradeValue } from '@/lib/grade'
 import { BillingCard } from '@/components/BillingCard'
 
 interface Athlete {
@@ -33,6 +35,9 @@ interface Athlete {
   emailVerified: boolean
   waiverSignedAt: string | null
   waiverLinkSentAt: string | null
+  sports: string[]
+  gradYear: number | null
+  schoolLevel: string | null
   trainerId: string | null
   trainer: { id: string; user: { name: string } } | null
   _count: { sessions: number; checkIns: number }
@@ -239,6 +244,11 @@ export default function AthleteDetail() {
             <br />
             {athlete.lastName}
           </h1>
+          {(athlete.sports?.length > 0 || gradeLabel(athlete.gradYear, athlete.schoolLevel)) && (
+            <div className="text-sm font-semibold text-black mb-2">
+              {[athlete.sports?.join(', '), gradeLabel(athlete.gradYear, athlete.schoolLevel)].filter(Boolean).join(' · ')}
+            </div>
+          )}
           <div className="text-sm text-black/70">
             <a
               href={`mailto:${athlete.email}`}
@@ -885,6 +895,20 @@ function EditAthleteSheet({
   const [trainerId, setTrainerId] = useState(athlete.trainerId ?? '')
   const [emailOptOut, setEmailOptOut] = useState(athlete.emailOptOut ?? false)
   const [smsOptIn, setSmsOptIn] = useState(athlete.smsOptIn ?? false)
+  const [parentName, setParentName] = useState(athlete.parentName ?? '')
+  const [parentPhone, setParentPhone] = useState(athlete.parentPhone ? formatPhonePretty(athlete.parentPhone) : '')
+  const [parentRelationship, setParentRelationship] = useState(athlete.parentRelationship ?? '')
+  // Pre-tick "same as parent" when the stored contact already is the parent.
+  const [sameAsParent, setSameAsParent] = useState(
+    Boolean(athlete.parentName) &&
+      athlete.emergencyName === athlete.parentName &&
+      athlete.emergencyPhone === athlete.parentPhone
+  )
+  const [emergencyName, setEmergencyName] = useState(athlete.emergencyName ?? '')
+  const [emergencyPhone, setEmergencyPhone] = useState(athlete.emergencyPhone ? formatPhonePretty(athlete.emergencyPhone) : '')
+  const [emergencyRelationship, setEmergencyRelationship] = useState(athlete.emergencyRelationship ?? '')
+  const [sports, setSports] = useState<string[]>(athlete.sports ?? [])
+  const [grade, setGrade] = useState(storedToGradeValue(athlete.gradYear, athlete.schoolLevel))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -904,6 +928,17 @@ function EditAthleteSheet({
         trainerId: trainerId === '' ? null : trainerId,
         emailOptOut,
         smsOptIn,
+        sports,
+        grade,
+        guardian: {
+          parentName,
+          parentPhone,
+          parentRelationship,
+          emergencyName,
+          emergencyPhone,
+          emergencyRelationship,
+          emergencySameAsParent: sameAsParent,
+        },
       }),
     })
     const data = await res.json()
@@ -1006,6 +1041,39 @@ function EditAthleteSheet({
               className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black focus:outline-none focus:ring-2 focus:ring-black/20"
             />
           </Field>
+
+          <SportGradePicker sports={sports} onSportsChange={setSports} grade={grade} onGradeChange={setGrade} />
+
+          <div className="rounded-2xl border border-black/10 p-3 space-y-3">
+            <div className="dsc-label text-black/50">Parent / guardian</div>
+            <input value={parentName} onChange={(e) => setParentName(e.target.value)} placeholder="Name" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+            <div className="grid grid-cols-2 gap-3">
+              <input value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} placeholder="Mobile" inputMode="tel" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+              <input value={parentRelationship} onChange={(e) => setParentRelationship(e.target.value)} placeholder="Mom, Dad…" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 p-3 space-y-3">
+            <div className="dsc-label text-black/50">Emergency contact</div>
+            <label className="flex items-center gap-2 text-sm text-black/70">
+              <input
+                type="checkbox"
+                checked={sameAsParent}
+                onChange={(e) => setSameAsParent(e.target.checked)}
+                className="w-4 h-4 accent-black"
+              />
+              Same as parent / guardian
+            </label>
+            {!sameAsParent && (
+              <>
+                <input value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} placeholder="Name" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+                <div className="grid grid-cols-2 gap-3">
+                  <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} placeholder="Mobile" inputMode="tel" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+                  <input value={emergencyRelationship} onChange={(e) => setEmergencyRelationship(e.target.value)} placeholder="Aunt, neighbor…" className="w-full h-11 px-3 bg-black/[0.04] rounded-xl text-sm text-black placeholder:text-black/40 focus:outline-none focus:ring-2 focus:ring-black/20" />
+                </div>
+              </>
+            )}
+          </div>
 
           <div>
             <div className="dsc-label text-black/50 mb-1">Contact</div>
