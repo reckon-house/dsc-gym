@@ -29,11 +29,16 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: Record<string, unknown> = {}
 
-    // Trainer filter - trainers can only see their own sessions
-    if (session.role === 'TRAINER') {
+    // Coaches see their own sessions by default. ?scope=all is the shared
+    // master schedule (/schedule): every coach sees the whole gym's day for
+    // awareness — read-only, and without families' contact details.
+    const scopeAll = searchParams.get('scope') === 'all'
+    if (session.role === 'TRAINER' && !scopeAll) {
       where.trainerId = session.trainerId
     } else if (trainerId) {
-      where.trainerId = trainerId
+      // Lead OR assisting coach, so filtering to a coach shows every session
+      // they're working.
+      where.OR = [{ trainerId }, { coaches: { some: { trainerId } } }]
     }
 
     if (athleteId) {
@@ -102,6 +107,7 @@ export async function GET(request: NextRequest) {
           },
         },
         group: { select: { name: true, location: true } },
+        coaches: { include: { trainer: { select: { id: true, user: { select: { name: true } } } } } },
       },
       orderBy: {
         scheduledAt: 'asc',
@@ -109,8 +115,11 @@ export async function GET(request: NextRequest) {
     })
 
     // Flatten the attendees into a simpler array for the client.
+    const hideContact = session.role === 'TRAINER' && scopeAll
     const data = sessions.map((s) => ({
       ...s,
+      athlete: s.athlete && hideContact ? { ...s.athlete, email: '' } : s.athlete,
+      coaches: s.coaches.map((c) => ({ id: c.trainer.id, name: c.trainer.user.name })),
       // Resolved: the session's own tag, else its group's.
       location: effectiveLocation(s),
       ownLocation: s.location,

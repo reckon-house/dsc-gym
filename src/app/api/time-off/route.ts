@@ -32,12 +32,17 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const q = request.nextUrl.searchParams
 
-  const mine = q.get('mine') === '1' || user.role !== 'ADMIN'
+  // ?scope=all lets a coach see who else is off, for the shared schedule —
+  // approved time off only, and without the reason, which can be personal.
+  const coachScopeAll = user.role !== 'ADMIN' && q.get('scope') === 'all'
+  const mine = !coachScopeAll && (q.get('mine') === '1' || user.role !== 'ADMIN')
   if (mine && !user.trainerId) return NextResponse.json({ success: true, data: [] })
 
-  const status = (q.get('status') ?? '')
-    .split(',')
-    .filter((s): s is TimeOffStatus => (STATUSES as string[]).includes(s))
+  const status = coachScopeAll
+    ? (['approved'] as TimeOffStatus[])
+    : (q.get('status') ?? '')
+        .split(',')
+        .filter((s): s is TimeOffStatus => (STATUSES as string[]).includes(s))
 
   const rows = await listTimeOff(DEFAULT_GYM_ID, {
     trainerId: mine ? user.trainerId : q.get('trainerId') || undefined,
@@ -45,6 +50,13 @@ export async function GET(request: NextRequest) {
     from: ymdParam(q.get('from')),
     to: ymdParam(q.get('to')),
   })
+
+  if (coachScopeAll) {
+    return NextResponse.json({
+      success: true,
+      data: rows.map((r) => ({ ...r, reason: null, decisionNote: null })),
+    })
+  }
 
   const data = await Promise.all(
     rows.map(async (r) =>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AttendanceSheet } from '@/components/AttendanceSheet'
+import { QuickCheckIn } from '@/components/QuickCheckIn'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
@@ -81,6 +82,7 @@ const CARDS: {
 // leave a hole in a two-column layout.
 const LINKS: { href: string; label: string; desc: string }[] = [
   { href: '/admin/leads', label: 'Leads', desc: 'Waitlist & follow-ups' },
+  { href: '/schedule', label: 'Gym schedule', desc: 'What every coach sees' },
   { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
   { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
   { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },
@@ -314,6 +316,11 @@ export default function AdminHome() {
           </button>
         </div>
       </header>
+
+      {/* First thing on the screen: the front desk's most frequent job. */}
+      <div className="px-4 pb-3">
+        <QuickCheckIn />
+      </div>
 
       {/* Alerts row */}
       {(walkIns.length > 0 ||
