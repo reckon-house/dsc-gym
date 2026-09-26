@@ -11,6 +11,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatPhonePretty, smsHref, telHref } from '@/lib/phone'
 import { HealthNotes } from '@/components/HealthNotes'
+import { BillingCard } from '@/components/BillingCard'
 
 interface Athlete {
   id: string
@@ -82,6 +83,7 @@ export default function AthleteDetail() {
   const [busy, setBusy] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
 
   const load = useCallback(async () => {
     const [a, s, t] = await Promise.all([
@@ -100,7 +102,10 @@ export default function AthleteDetail() {
       .then((r) => r.json())
       .then((d) => {
         if (!d.success) router.replace('/login')
-        else load()
+        else {
+          setIsOwner(Boolean(d.user.isOwner))
+          load()
+        }
       })
   }, [router, load])
 
@@ -327,6 +332,8 @@ export default function AthleteDetail() {
         )}
 
         <HealthNotes base={`/api/athletes/${athlete.id}/health`} audience="staff" />
+
+        {isOwner && <BillingCard athleteId={athlete.id} name={`${athlete.firstName} ${athlete.lastName}`} />}
 
         <VisitHistory athleteId={athlete.id} />
 

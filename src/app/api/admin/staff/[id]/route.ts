@@ -11,6 +11,7 @@ import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { isDeliverableEmail } from '@/lib/notify'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { isOwner } from '@/lib/owner'
 
 async function otherActiveAdmins(excludeUserId: string): Promise<number> {
   return db.user.count({
@@ -38,6 +39,35 @@ export async function PATCH(
 
   const body = await request.json().catch(() => ({}))
   const data: Record<string, unknown> = {}
+
+  // Owners: only an owner can edit an owner (their email is their login, and
+  // demoting or disabling them would take the money screens away), and only
+  // an owner can grant or remove owner access.
+  const actorIsOwner = await isOwner(session.userId)
+  if (target.isOwner && target.id !== session.userId && !actorIsOwner) {
+    return NextResponse.json(
+      { success: false, error: 'Only an owner can change an owner’s account.' },
+      { status: 403 }
+    )
+  }
+  if (body.isOwner !== undefined) {
+    if (!actorIsOwner) {
+      return NextResponse.json({ success: false, error: 'Only an owner can grant owner access.' }, { status: 403 })
+    }
+    const next = Boolean(body.isOwner)
+    if (!next && target.isOwner) {
+      const others = await db.user.count({
+        where: { isOwner: true, active: true, role: 'ADMIN', id: { not: target.id } },
+      })
+      if (others === 0) {
+        return NextResponse.json({ success: false, error: 'This is the only owner.' }, { status: 400 })
+      }
+    }
+    if (next && (body.role ?? target.role) !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'An owner must also be an admin.' }, { status: 400 })
+    }
+    data.isOwner = next
+  }
 
   if (body.name !== undefined) {
     const name = String(body.name).trim()
@@ -82,6 +112,7 @@ export async function PATCH(
       }
     }
     data.role = role
+    if (role !== 'ADMIN' && target.isOwner) data.isOwner = false
   }
 
   if (body.active !== undefined) {
@@ -162,7 +193,7 @@ export async function PATCH(
 
   const updated = await db.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, role: true, active: true, trainer: { select: { archived: true } } },
+    select: { id: true, name: true, email: true, role: true, active: true, isOwner: true, trainer: { select: { archived: true } } },
   })
 
   return NextResponse.json({

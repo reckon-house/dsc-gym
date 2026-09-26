@@ -24,6 +24,8 @@ const PUBLIC_PATHS = [
   '/waiver/',
   '/api/gym',
   '/showcase',
+  // Public price list, linked from the website.
+  '/pricing',
   // OAuth + MCP discovery & flow — these auth themselves (bearer / PKCE)
   // and must be reachable without our staff session cookie.
   '/.well-known/oauth-authorization-server',

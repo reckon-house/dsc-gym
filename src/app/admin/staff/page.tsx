@@ -29,6 +29,7 @@ interface Staff {
   sessions: number
   reachable: boolean
   isSelf: boolean
+  isOwner: boolean
 }
 
 export default function StaffPage() {
@@ -38,6 +39,7 @@ export default function StaffPage() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Staff | null>(null)
   const [banner, setBanner] = useState<string | null>(null)
+  const [meOwner, setMeOwner] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newLogin, setNewLogin] = useState<{ name: string; email: string; password: string } | null>(null)
 
@@ -54,6 +56,7 @@ export default function StaffPage() {
       .then((r) => r.json())
       .then((d) => {
         if (!d.success) router.replace('/login')
+        else setMeOwner(Boolean(d.user.isOwner))
       })
   }, [router])
 
@@ -177,6 +180,7 @@ export default function StaffPage() {
       {editing && (
         <EditSheet
           s={editing}
+          meOwner={meOwner}
           onClose={() => setEditing(null)}
           onSave={async (body, what) => {
             const ok = await patch(editing.id, body, what)
@@ -199,7 +203,7 @@ function Row({ s, onEdit, dim }: { s: Staff; onEdit: () => void; dim?: boolean }
           </div>
           <div className="font-mono text-xs text-black/50 truncate mt-0.5">{s.email}</div>
           <div className="dsc-label text-black/50 mt-1">
-            {s.role === 'ADMIN' ? 'Admin' : 'Trainer'}
+            {s.isOwner ? 'Owner' : s.role === 'ADMIN' ? 'Admin' : 'Trainer'}
             {s.isCoach ? ' · coach' : ''}
             {s.isCoach && s.athletes > 0 ? ` · ${s.athletes} athletes` : ''}
             {!s.reachable && <span className="text-amber-700"> · no working email</span>}
@@ -328,10 +332,12 @@ function AddSheet({
 
 function EditSheet({
   s,
+  meOwner,
   onClose,
   onSave,
 }: {
   s: Staff
+  meOwner: boolean
   onClose: () => void
   onSave: (body: Record<string, unknown>, what: string) => Promise<void>
 }) {
@@ -339,10 +345,25 @@ function EditSheet({
   const [email, setEmail] = useState(s.email)
   const [role, setRole] = useState<'ADMIN' | 'TRAINER'>(s.role)
   const [isCoach, setIsCoach] = useState(s.isCoach)
+  const [owner, setOwner] = useState(s.isOwner)
   const [saving, setSaving] = useState(false)
 
   const changed =
-    name !== s.name || email !== s.email || role !== s.role || isCoach !== s.isCoach
+    name !== s.name ||
+    email !== s.email ||
+    role !== s.role ||
+    isCoach !== s.isCoach ||
+    owner !== s.isOwner
+
+  if (s.isOwner && !meOwner && !s.isSelf) {
+    return (
+      <Sheet title={s.name} onClose={onClose}>
+        <p className="text-sm text-black/60">
+          {s.name} is an owner. Only an owner can change their account or reset their password.
+        </p>
+      </Sheet>
+    )
+  }
 
   return (
     <Sheet title={`Edit ${s.name}`} onClose={onClose}>
@@ -379,6 +400,23 @@ function EditSheet({
         </div>
       </Field>
 
+      {meOwner && role === 'ADMIN' && (
+        <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
+          <input
+            type="checkbox"
+            checked={owner}
+            onChange={(e) => setOwner(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-black shrink-0"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-black">Owner</span>
+            <span className="block text-xs text-black/50 mt-0.5">
+              Sees prices, revenue and who&rsquo;s paid. Other admins don&rsquo;t.
+            </span>
+          </span>
+        </label>
+      )}
+
       <label className="flex items-start gap-3 px-3 py-2.5 bg-black/[0.04] rounded-xl cursor-pointer">
         <input
           type="checkbox"
@@ -398,7 +436,10 @@ function EditSheet({
       <button
         onClick={async () => {
           setSaving(true)
-          await onSave({ name, email, role, isCoach }, 'Updated')
+          await onSave(
+            { name, email, role, isCoach, ...(owner !== s.isOwner && role === 'ADMIN' ? { isOwner: owner } : {}) },
+            'Updated'
+          )
           setSaving(false)
         }}
         disabled={saving || !changed}
