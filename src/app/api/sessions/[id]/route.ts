@@ -40,7 +40,7 @@ export async function GET(
             },
           },
         },
-        checkIn: true,
+        checkIns: true,
       },
     })
 

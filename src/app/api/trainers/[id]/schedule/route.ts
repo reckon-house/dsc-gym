@@ -91,7 +91,7 @@ export async function GET(
             email: true,
           },
         },
-        checkIn: true,
+        checkIns: true,
       },
       orderBy: {
         scheduledAt: 'asc',

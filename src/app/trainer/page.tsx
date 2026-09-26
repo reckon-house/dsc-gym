@@ -10,6 +10,7 @@ import {
 } from './_components/TrainerScheduleSheet'
 import { AttendanceSheet } from '@/components/AttendanceSheet'
 import { TimeOffSheet } from '@/components/TimeOffSheet'
+import { QuickCheckIn } from '@/components/QuickCheckIn'
 
 interface SessionRow {
   id: string
@@ -228,6 +229,8 @@ export default function TrainerDashboard() {
       </header>
 
       <div className="px-4 md:px-6 py-6 max-w-3xl mx-auto w-full flex-1 space-y-8">
+        <QuickCheckIn />
+
         {/* Hero — today */}
         <section>
           <div className="dsc-label text-black/40 mb-1">
@@ -237,9 +240,17 @@ export default function TrainerDashboard() {
               day: 'numeric',
             })}
           </div>
-          <h1 className="dsc-headline text-4xl md:text-5xl text-black mb-5">
-            {user?.name?.split(' ')[0] || 'Trainer'}
-          </h1>
+          <div className="flex items-end justify-between gap-3 mb-5">
+            <h1 className="dsc-headline text-4xl md:text-5xl text-black">
+              {user?.name?.split(' ')[0] || 'Trainer'}
+            </h1>
+            <Link
+              href="/schedule"
+              className="h-10 px-4 rounded-full bg-black/5 hover:bg-black/10 text-sm font-semibold text-black flex items-center shrink-0"
+            >
+              Gym schedule →
+            </Link>
+          </div>
 
           {todaySessions.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-black/15 p-6 text-center">

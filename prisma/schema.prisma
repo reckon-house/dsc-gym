@@ -273,7 +273,7 @@ model Session {
   coaches         SessionCoach[]
   parentSession   Session?          @relation("RecurringSessions", fields: [parentSessionId], references: [id])
   childSessions   Session[]         @relation("RecurringSessions")
-  checkIn         CheckIn?
+  checkIns        CheckIn[]
   bookingRequests BookingRequest[]
 
   @@index([gymId, scheduledAt])
@@ -306,18 +306,27 @@ model SessionAttendee {
 }
 
 model CheckIn {
-  id          String   @id @default(cuid())
-  gymId       String
-  athleteId   String
-  sessionId   String?  @unique
-  checkInTime DateTime @default(now())
-  matched     Boolean  @default(false)
+  id            String   @id @default(cuid())
+  gymId         String
+  athleteId     String
+  /// Not unique: a group session has one check-in per kid. It was @unique,
+  /// which made the second athlete checking into the same class an error.
+  sessionId     String?
+  checkInTime   DateTime @default(now())
+  matched       Boolean  @default(false)
+  /// Staff member who checked them in; null = the self-serve kiosk.
+  checkedInById String?
 
   gym     Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
   athlete Athlete  @relation(fields: [athleteId], references: [id])
   session Session? @relation(fields: [sessionId], references: [id])
 
   @@index([gymId])
+  @@index([sessionId])
+  // Both already exist in the database (added by an earlier migration) but
+  // were missing here, which showed up as drift.
+  @@index([athleteId, checkInTime])
+  @@index([gymId, matched, checkInTime])
 }
 
 model WalkIn {

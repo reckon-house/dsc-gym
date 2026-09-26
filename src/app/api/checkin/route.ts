@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { staffCheckIn } from '@/lib/checkin'
 
 // POST /api/checkin - Process athlete check-in
 export async function POST(request: NextRequest) {
@@ -103,58 +104,24 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Find today's session for this athlete
-    const today = new Date()
-    const dayStart = new Date(today)
-    dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(today)
-    dayEnd.setHours(23, 59, 59, 999)
-
-    const todaySession = await db.session.findFirst({
-      where: {
-        athleteId: athlete.id,
-        scheduledAt: {
-          gte: dayStart,
-          lte: dayEnd,
-        },
-        cancelled: false,
-        completed: false,
-      },
-      orderBy: {
-        scheduledAt: 'asc',
-      },
-    })
-
-    // Create check-in record
-    const checkIn = await db.checkIn.create({
-      data: {
-        gymId: DEFAULT_GYM_ID,
-        athleteId: athlete.id,
-        sessionId: todaySession?.id || null,
-        matched: !!todaySession,
-      },
-    })
-
-    // If session found, mark it as completed
-    if (todaySession) {
-      await db.session.update({
-        where: { id: todaySession.id },
-        data: {
-          completed: true,
-          completedAt: new Date(),
-        },
-      })
+    // Same path as the staff check-in: matches any session the athlete is on
+    // the roster of (not only ones where they are the first name), uses the
+    // gym's day rather than the server's, and marks them present on it.
+    // Before, the kiosk matched only Session.athleteId, used the server's UTC
+    // day, and marked the WHOLE session complete when the first kid arrived.
+    const result = await staffCheckIn(DEFAULT_GYM_ID, athlete.id, null)
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 })
     }
+    const todaySession = result.sessionRecord ?? null
+    const checkIn = { id: result.checkInId!, checkInTime: result.checkInTime! }
 
-    // Get next upcoming session if no session today
     let nextSession = null
     if (!todaySession) {
       nextSession = await db.session.findFirst({
         where: {
-          athleteId: athlete.id,
-          scheduledAt: {
-            gt: dayEnd,
-          },
+          attendees: { some: { athleteId: athlete.id } },
+          scheduledAt: { gt: new Date() },
           cancelled: false,
         },
         orderBy: {
@@ -194,7 +161,9 @@ export async function POST(request: NextRequest) {
         matched: !!todaySession,
       },
       matched: !!todaySession,
-      message: todaySession
+      message: result.already
+        ? `You're already checked in, ${athlete.firstName}.`
+        : todaySession
         ? `Welcome back, ${athlete.firstName}! Your session has been checked in.`
         : `Welcome, ${athlete.firstName}! No session scheduled for today.`,
     })
