@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { validateBooking, addSessionAttendee, removeSessionAttendee } from '@/lib/scheduling/engine'
+import { resolveLocation } from '@/lib/locations'
 
 export async function PATCH(
   request: NextRequest,
@@ -47,6 +48,29 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: problems[0], problems }, { status: 409 })
     }
     // An attendee-only edit is complete; nothing to reschedule.
+    if (
+      body.trainerId === undefined &&
+      body.athleteId === undefined &&
+      body.scheduledAt === undefined &&
+      body.duration === undefined &&
+      body.notes === undefined
+    ) {
+      return NextResponse.json({ success: true })
+    }
+  }
+
+  // Location is bookkeeping, not scheduling: it never needs the engine, and
+  // re-validating would refuse to retag a session that is already in the past.
+  if (body.location !== undefined) {
+    const loc = await resolveLocation(DEFAULT_GYM_ID, body.location)
+    if (!loc.ok) return NextResponse.json({ success: false, error: loc.error }, { status: 400 })
+    const group = existing.groupId
+      ? await db.group.findUnique({ where: { id: existing.groupId }, select: { location: true } })
+      : null
+    // Matching the group's location is stored as "inherit", so the session
+    // follows the group if it ever moves.
+    const own = group && group.location === loc.value ? null : loc.value
+    await db.session.update({ where: { id }, data: { location: own } })
     if (
       body.trainerId === undefined &&
       body.athleteId === undefined &&

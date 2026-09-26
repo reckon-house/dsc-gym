@@ -24,6 +24,7 @@ interface DaySession {
   groupName?: string | null
   trainer: { id: string; user: { name: string } }
   attendees?: { id: string; firstName: string; lastName: string }[]
+  location?: string | null
 }
 
 interface DayMeeting {
@@ -32,6 +33,14 @@ interface DayMeeting {
   startsAt: string
   duration: number
   trainerIds: string[]
+}
+
+interface DayTimeOff {
+  id: string
+  trainerName: string
+  label: string
+  reason: string | null
+  startMinute: number | null
 }
 
 interface DayRecovery {
@@ -88,6 +97,15 @@ export default function CalendarDayDetail() {
   // Carried over from the week view's trainer filter, so drilling into a day
   // doesn't silently widen the view back to everyone.
   const filterTrainerId = searchParams.get('trainerId') ?? ''
+  const filterLocation = searchParams.get('location') ?? ''
+  // Carried on prev/next so paging through days keeps the filters.
+  const filterQuery = (() => {
+    const q = new URLSearchParams()
+    if (filterTrainerId) q.set('trainerId', filterTrainerId)
+    if (filterLocation) q.set('location', filterLocation)
+    const str = q.toString()
+    return str ? `?${str}` : ''
+  })()
   // Memoized on the URL string, not recomputed per render. parseDateKey mints
   // a new Date object every call, and an unstable `date` invalidates every
   // memo and callback below it — which sends the load effects into a fetch
@@ -96,6 +114,7 @@ export default function CalendarDayDetail() {
   const [sessions, setSessions] = useState<DaySession[]>([])
   const [meetings, setMeetings] = useState<DayMeeting[]>([])
   const [recovery, setRecovery] = useState<DayRecovery[]>([])
+  const [timeOff, setTimeOff] = useState<DayTimeOff[]>([])
   const [defaultPriceCents, setDefaultPriceCents] = useState(2500)
   const [trainers, setTrainers] = useState<TrainerOpt[]>([])
   const [athletes, setAthletes] = useState<AthleteOpt[]>([])
@@ -124,6 +143,7 @@ export default function CalendarDayDetail() {
       endDate: bounds.end.toISOString(),
     })
     if (filterTrainerId) qs.set('trainerId', filterTrainerId)
+    if (filterLocation) qs.set('location', filterLocation)
     const res = await fetch(`/api/sessions?${qs.toString()}`)
     const data = await res.json()
     if (!data.success) return
@@ -143,9 +163,10 @@ export default function CalendarDayDetail() {
         scheduledAt: fresh.scheduledAt,
         duration: fresh.duration,
         attendees: fresh.attendees,
+        location: fresh.location ?? null,
       }
     })
-  }, [bounds, filterTrainerId])
+  }, [bounds, filterTrainerId, filterLocation])
 
   const loadMeetings = useCallback(async () => {
     if (!bounds) return
@@ -163,6 +184,27 @@ export default function CalendarDayDetail() {
         : all
     )
   }, [bounds, filterTrainerId])
+
+  const loadTimeOff = useCallback(async () => {
+    if (!date) return
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const ymd = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    const qs = new URLSearchParams({ status: 'approved', from: ymd, to: ymd })
+    if (filterTrainerId) qs.set('trainerId', filterTrainerId)
+    const res = await fetch(`/api/time-off?${qs.toString()}`)
+    const data = await res.json()
+    if (data.success) setTimeOff(data.data)
+  }, [date, filterTrainerId])
+
+  async function cancelTimeOff(t: DayTimeOff) {
+    if (!confirm(`Cancel ${t.trainerName}'s time off (${t.label})? They become bookable again.`)) return
+    await fetch(`/api/time-off/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' }),
+    })
+    loadTimeOff()
+  }
 
   const loadRecovery = useCallback(async () => {
     if (!bounds) return
@@ -212,8 +254,9 @@ export default function CalendarDayDetail() {
     loadSessions()
     loadMeetings()
     loadRecovery()
+    loadTimeOff()
     loadOptions()
-  }, [loadSessions, loadMeetings, loadRecovery, loadOptions])
+  }, [loadSessions, loadMeetings, loadRecovery, loadTimeOff, loadOptions])
 
   const prevDay = useMemo(() => {
     if (!date) return null
@@ -260,6 +303,7 @@ export default function CalendarDayDetail() {
       scheduledAt: session.scheduledAt,
       duration: session.duration,
       attendees: session.attendees,
+      location: session.location ?? null,
     })
     setSheetOpen(true)
   }
@@ -354,7 +398,7 @@ export default function CalendarDayDetail() {
           <div className="flex items-center gap-2">
             {prevDay && (
               <Link
-                href={`/admin/calendar/${dateKey(prevDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
+                href={`/admin/calendar/${dateKey(prevDay)}${filterQuery}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Previous day"
               >
@@ -363,7 +407,7 @@ export default function CalendarDayDetail() {
             )}
             {nextDay && (
               <Link
-                href={`/admin/calendar/${dateKey(nextDay)}${filterTrainerId ? `?trainerId=${filterTrainerId}` : ''}`}
+                href={`/admin/calendar/${dateKey(nextDay)}${filterQuery}`}
                 className="w-10 h-10 flex items-center justify-center rounded-full bg-black/5 text-black/70 hover:bg-black/10"
                 aria-label="Next day"
               >
@@ -395,6 +439,31 @@ export default function CalendarDayDetail() {
             + Recovery
           </button>
         </div>
+
+        {/* Who's off. Above the timeline because it changes what can go in it. */}
+        {timeOff.length > 0 && (
+          <div className="space-y-2 mb-3">
+            {timeOff.map((t) => (
+              <div
+                key={t.id}
+                className="rounded-3xl px-5 py-3 flex items-center justify-between gap-3 bg-violet-50 text-violet-950"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">
+                    {t.trainerName} is off{t.startMinute === null ? ' all day' : ''}
+                  </div>
+                  <div className="dsc-label opacity-60 mt-0.5 truncate">
+                    {t.label}
+                    {t.reason ? ` · ${t.reason}` : ''}
+                  </div>
+                </div>
+                <button onClick={() => cancelTimeOff(t)} className="dsc-label opacity-60 hover:opacity-100 shrink-0">
+                  Cancel
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* The day */}
         {timeline.length === 0 ? (
@@ -526,6 +595,7 @@ export default function CalendarDayDetail() {
                         <div className="font-semibold truncate">{displayName}</div>
                         <div className="dsc-label opacity-60 mt-0.5">
                           {s.trainer.user.name} · {s.duration} min
+                          {s.location ? ` · ${s.location}` : ''}
                           {s.completed ? ' · attendance taken' : ''}
                         </div>
                       </div>

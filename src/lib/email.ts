@@ -132,6 +132,37 @@ This link expires in 24 hours. If you didn't sign up, ignore this email.
   return { subject, text, html }
 }
 
+export function buildWaiverRequestEmail(args: {
+  firstName: string
+  url: string
+  days: number
+}): { subject: string; text: string; html: string } {
+  const subject = `Waiver for ${args.firstName} — Dallas Sport Collective`
+
+  const text = `Hi,
+
+Before ${args.firstName} trains at DSC we need a signed waiver on file. It takes about a minute:
+${args.url}
+
+A parent or guardian should sign for anyone under 18. The link works once and expires in ${args.days} days.
+
+— DSC`
+
+  const html = renderHtmlEmail({
+    preview: `Sign ${args.firstName}'s waiver — takes about a minute.`,
+    headerLabel: 'Dallas Sport Collective',
+    headline: 'One quick signature',
+    intro: `Before ${args.firstName} trains at DSC we need a signed waiver on file. It takes about a minute. A parent or guardian should sign for anyone under 18.`,
+    buttonLabel: 'Read and sign',
+    buttonUrl: args.url,
+    fallbackLabel: 'Or paste this link into your browser:',
+    fallbackUrl: args.url,
+    footnote: `This link works once and expires in ${args.days} days. If you weren't expecting it, you can ignore this email.`,
+  })
+
+  return { subject, text, html }
+}
+
 interface EmailLayoutArgs {
   preview: string
   headerLabel: string
@@ -806,5 +837,78 @@ Full day: ${args.url}
         : 'Sent each morning. Reply to this email if something looks wrong.',
   })
 
+  return { subject, text, html }
+}
+
+/** Owner-facing: a coach asked for time off. */
+export function buildTimeOffRequestEmail(args: {
+  coachName: string
+  whenLabel: string
+  reason: string | null
+  bookedLine: string
+  adminUrl: string
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = `${args.coachName} asked for time off — ${args.whenLabel}`
+  const intro = `${args.coachName} asked for time off ${args.whenLabel}.${
+    args.reason ? ` Reason: "${args.reason}".` : ''
+  } ${args.bookedLine}`
+
+  const text = `${intro}
+
+Approve or decline: ${args.adminUrl}
+
+— Dallas Sport Collective`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Time off request',
+    logoUrl: args.logoUrl,
+    headline: 'Time off request',
+    intro,
+    buttonLabel: 'Review the request',
+    buttonUrl: args.adminUrl,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.adminUrl,
+    footnote: 'Nothing is blocked until you approve it.',
+  })
+  return { subject, text, html }
+}
+
+/** Coach-facing: the answer. */
+export function buildTimeOffDecidedEmail(args: {
+  firstName: string
+  whenLabel: string
+  approved: boolean
+  note: string | null
+  url: string
+  logoUrl?: string
+}): { subject: string; text: string; html: string } {
+  const subject = args.approved
+    ? `Time off approved — ${args.whenLabel}`
+    : `Time off declined — ${args.whenLabel}`
+  const intro = args.approved
+    ? `Hi ${args.firstName} — your time off ${args.whenLabel} is approved. Nobody can book you then.`
+    : `Hi ${args.firstName} — your time off request for ${args.whenLabel} was declined.`
+  const full = args.note ? `${intro} Note: "${args.note}"` : intro
+
+  const text = `${full}
+
+${args.url}
+
+— Dallas Sport Collective`
+
+  const html = renderHtmlEmail({
+    preview: subject,
+    headerLabel: 'Time off',
+    logoUrl: args.logoUrl,
+    headline: args.approved ? 'Approved' : 'Declined',
+    intro: full,
+    buttonLabel: 'Open DSC',
+    buttonUrl: args.url,
+    fallbackLabel: 'Or open this link:',
+    fallbackUrl: args.url,
+    footnote: 'Talk to Jordan or Scott if anything needs to change.',
+  })
   return { subject, text, html }
 }

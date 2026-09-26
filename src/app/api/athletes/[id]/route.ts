@@ -22,6 +22,8 @@ export async function GET(
 
     const athlete = await db.athlete.findUnique({
       where: { id },
+      // Never send credentials to the browser, staff or not.
+      omit: { passwordHash: true, emailVerificationToken: true, waiverTokenHash: true },
       include: {
         sessions: {
           where: { cancelled: false },

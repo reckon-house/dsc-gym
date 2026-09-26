@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { formatPhonePretty, smsHref, telHref } from '@/lib/phone'
+import { HealthNotes } from '@/components/HealthNotes'
 
 interface Athlete {
   id: string
@@ -30,6 +31,7 @@ interface Athlete {
   smsOptIn: boolean
   emailVerified: boolean
   waiverSignedAt: string | null
+  waiverLinkSentAt: string | null
   trainerId: string | null
   trainer: { id: string; user: { name: string } } | null
   _count: { sessions: number; checkIns: number }
@@ -267,7 +269,11 @@ export default function AthleteDetail() {
                 Unassigned
               </span>
             )}
-            {!athlete.waiverSignedAt && (
+            {athlete.waiverSignedAt ? (
+              <span className="dsc-label px-2 py-1 rounded-full bg-emerald-50 text-emerald-900">
+                Waiver signed {new Date(athlete.waiverSignedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            ) : (
               <span className="dsc-label px-2 py-1 rounded-full bg-amber-100 text-amber-900">
                 Waiver pending
               </span>
@@ -280,6 +286,15 @@ export default function AthleteDetail() {
             </span>
           </div>
         </div>
+
+        {!athlete.waiverSignedAt && !athlete.archived && (
+          <WaiverLinkCard
+            athleteId={athlete.id}
+            firstName={athlete.firstName}
+            email={athlete.email}
+            lastSentAt={athlete.waiverLinkSentAt}
+          />
+        )}
 
         {/* Who to call. Placed high on the page on purpose: if someone is
             looking for this, they are looking for it in a hurry. */}
@@ -310,6 +325,8 @@ export default function AthleteDetail() {
             </div>
           </div>
         )}
+
+        <HealthNotes base={`/api/athletes/${athlete.id}/health`} audience="staff" />
 
         <VisitHistory athleteId={athlete.id} />
 
@@ -1116,6 +1133,123 @@ function DeleteAthleteSheet({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Profiles staff create never went through the signup form, so nobody agreed
+// to the waiver. This sends the family a one-time link to sign it. The link is
+// also shown for copying, because chat-created profiles have a placeholder
+// email and the only way to reach those families is a text.
+function WaiverLinkCard({
+  athleteId,
+  firstName,
+  email,
+  lastSentAt,
+}: {
+  athleteId: string
+  firstName: string
+  email: string
+  lastSentAt: string | null
+}) {
+  const [busy, setBusy] = useState(false)
+  const [link, setLink] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const placeholder = /@placeholder\.com$|@dsc\.com$|@example\./i.test(email)
+
+  async function make(send: boolean) {
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    setCopied(false)
+    try {
+      const r = await fetch(`/api/athletes/${athleteId}/waiver-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ send }),
+      })
+      const d = await r.json()
+      if (!d.success) {
+        setError(d.error ?? 'Could not make a link.')
+        return
+      }
+      setLink(d.data.url)
+      if (send) {
+        setNote(
+          d.data.emailed
+            ? `Emailed to ${d.data.emailedTo}. You can also text the link below.`
+            : "Couldn't email it — no real address on file. Text this link to the family instead."
+        )
+      }
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function copy() {
+    if (!link) return
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="rounded-3xl bg-amber-50 p-5 mb-8">
+      <div className="dsc-label text-amber-900/70 mb-1">Waiver not signed</div>
+      <p className="text-sm text-amber-950">
+        Send {firstName}&rsquo;s family a link to sign it. The link works once and lasts 14 days.
+        {lastSentAt && (
+          <span className="text-amber-900/70">
+            {' '}Last emailed {new Date(lastSentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.
+          </span>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2 mt-3">
+        {!placeholder && (
+          <button
+            onClick={() => make(true)}
+            disabled={busy}
+            className="h-10 px-4 rounded-full bg-black text-white text-sm font-semibold disabled:bg-black/30"
+          >
+            {busy ? 'Working…' : link ? 'Email a new link' : 'Email signing link'}
+          </button>
+        )}
+        <button
+          onClick={() => make(false)}
+          disabled={busy}
+          className="h-10 px-4 rounded-full bg-black/10 text-black text-sm font-semibold disabled:opacity-50"
+        >
+          {placeholder ? (busy ? 'Working…' : 'Get link to text') : 'Just get the link'}
+        </button>
+      </div>
+      {placeholder && !link && (
+        <p className="text-xs text-amber-900/70 mt-2">No real email on file, so it can&rsquo;t be emailed.</p>
+      )}
+      {note && <p className="text-xs text-amber-950 mt-3">{note}</p>}
+      {link && (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            readOnly
+            value={link}
+            onFocus={(e) => e.currentTarget.select()}
+            className="flex-1 min-w-0 h-10 px-3 bg-white rounded-xl text-xs text-black/70"
+          />
+          <button
+            onClick={copy}
+            className="h-10 px-4 rounded-full bg-white text-black text-sm font-semibold shrink-0"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-700 mt-3">{error}</p>}
     </div>
   )
 }

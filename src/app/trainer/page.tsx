@@ -9,6 +9,7 @@ import {
   type TrainerSessionDraft,
 } from './_components/TrainerScheduleSheet'
 import { AttendanceSheet } from '@/components/AttendanceSheet'
+import { TimeOffSheet } from '@/components/TimeOffSheet'
 
 interface SessionRow {
   id: string
@@ -69,6 +70,14 @@ function fmtTime(iso: string): string {
     .replace(/\s/g, '')
 }
 
+interface TimeOffRow {
+  id: string
+  label: string
+  reason: string | null
+  status: 'pending' | 'approved' | 'declined' | 'cancelled'
+  decisionNote: string | null
+}
+
 export default function TrainerDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<{ name: string } | null>(null)
@@ -77,6 +86,8 @@ export default function TrainerDashboard() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [owed, setOwed] = useState<OwedRow[]>([])
   const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
+  const [timeOff, setTimeOff] = useState<TimeOffRow[]>([])
+  const [timeOffOpen, setTimeOffOpen] = useState(false)
   const [sheetInitial, setSheetInitial] = useState<TrainerSessionDraft | null>(null)
 
   function openCreate() {
@@ -110,6 +121,27 @@ export default function TrainerDashboard() {
     if (data.success) setOwed(data.data)
   }, [])
 
+  const loadTimeOff = useCallback(async () => {
+    // Upcoming and recent only; last month's approved days are just noise.
+    const since = new Date()
+    since.setDate(since.getDate() - 7)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const from = `${since.getFullYear()}-${pad(since.getMonth() + 1)}-${pad(since.getDate())}`
+    const res = await fetch(`/api/time-off?status=pending,approved,declined&from=${from}`)
+    const data = await res.json()
+    if (data.success) setTimeOff(data.data)
+  }, [])
+
+  async function withdrawTimeOff(id: string) {
+    if (!confirm('Withdraw this request?')) return
+    await fetch(`/api/time-off/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' }),
+    })
+    loadTimeOff()
+  }
+
   const loadAthletes = useCallback(async () => {
     const res = await fetch('/api/athletes')
     const data = await res.json()
@@ -136,7 +168,8 @@ export default function TrainerDashboard() {
     loadSessions()
     loadAthletes()
     loadOwed()
-  }, [loadSessions, loadAthletes, loadOwed])
+    loadTimeOff()
+  }, [loadSessions, loadAthletes, loadOwed, loadTimeOff])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -342,6 +375,61 @@ export default function TrainerDashboard() {
           </div>
         </section>
 
+        {/* Time off */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div className="dsc-label text-black/50">Time off</div>
+            <button
+              onClick={() => setTimeOffOpen(true)}
+              className="dsc-label px-3 py-1.5 rounded-full bg-black/5 text-black hover:bg-black/10"
+            >
+              + Request
+            </button>
+          </div>
+          {timeOff.length === 0 ? (
+            <p className="text-sm text-black/40">Nothing requested.</p>
+          ) : (
+            <div className="grid gap-2">
+              {timeOff.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded-2xl border border-black/10 px-4 py-3 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-black truncate">{t.label}</div>
+                    {(t.reason || t.decisionNote) && (
+                      <div className="text-sm text-black/50 truncate">
+                        {t.decisionNote ? `Note: ${t.decisionNote}` : t.reason}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`dsc-label px-2 py-1 rounded-full ${
+                        t.status === 'approved'
+                          ? 'bg-emerald-50 text-emerald-900'
+                          : t.status === 'declined'
+                            ? 'bg-red-50 text-red-900'
+                            : 'bg-amber-100 text-amber-900'
+                      }`}
+                    >
+                      {t.status === 'pending' ? 'Waiting' : t.status === 'approved' ? 'Approved' : 'Declined'}
+                    </span>
+                    {t.status === 'pending' && (
+                      <button
+                        onClick={() => withdrawTimeOff(t.id)}
+                        className="dsc-label text-black/40 hover:text-black"
+                      >
+                        Withdraw
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* My athletes */}
         <section>
           <div className="dsc-label text-black/50 mb-3">
@@ -385,6 +473,12 @@ export default function TrainerDashboard() {
           loadSessions()
           loadOwed()
         }}
+      />
+
+      <TimeOffSheet
+        open={timeOffOpen}
+        onClose={() => setTimeOffOpen(false)}
+        onSaved={loadTimeOff}
       />
 
       <TrainerScheduleSheet

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { resolveLocation } from '@/lib/locations'
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const loc = await resolveLocation(DEFAULT_GYM_ID, body.location)
+  if (!loc.ok) return NextResponse.json({ success: false, error: loc.error }, { status: 400 })
+
   const memberIds: string[] = Array.isArray(body.memberIds) ? body.memberIds.map(String) : []
   const coachIds: string[] = Array.isArray(body.coachIds) ? body.coachIds.map(String) : []
 
@@ -86,6 +90,7 @@ export async function POST(request: NextRequest) {
             ? null
             : Number(body.capacity),
         description: body.description ? String(body.description) : null,
+        location: loc.value,
         members: { create: memberIds.map((athleteId) => ({ athleteId })) },
         // First coach listed is the lead — they become Session.trainerId.
         coaches: {

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
+import { activeHealthFlags } from '@/lib/health'
 import { canTakeAttendance, recordAttendance, type AttendanceStatus } from '@/lib/attendance'
 
 async function authorise(sessionId: string) {
@@ -56,6 +57,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     orderBy: { lastName: 'asc' },
   })
 
+  // Current injuries/PT, so the coach sees them at the moment it matters.
+  const health = await activeHealthFlags(s.attendees.map((r) => r.athlete.id))
+
   return NextResponse.json({
     success: true,
     data: {
@@ -71,6 +75,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         name: `${r.athlete.firstName} ${r.athlete.lastName}`,
         status: r.status,
         dropIn: r.dropIn,
+        health: health.get(r.athlete.id) ?? [],
       })),
     },
   })

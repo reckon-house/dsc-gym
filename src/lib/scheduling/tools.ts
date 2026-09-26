@@ -10,7 +10,10 @@ import { attendanceReport, thisWeek, monthRange } from '@/lib/reports'
 import { recordAttendance, attendanceOwed, absentAthletes } from '@/lib/attendance'
 import { createBlastDraft, sendBlast } from '@/lib/blast'
 import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
-import { notifyGroupJoinResolved } from '@/lib/notify'
+import { notifyGroupJoinResolved, notifyTimeOffDecided } from '@/lib/notify'
+import { approveTimeOff, declineTimeOff, listTimeOff, requestTimeOff, sessionsDuring } from '@/lib/timeOff'
+import { createWaiverLink } from '@/lib/waiverLink'
+import { effectiveLocation, resolveLocation, sessionLocationWhere } from '@/lib/locations'
 import { hashPassword, MIN_PASSWORD_LENGTH, generateTempPassword } from '@/lib/auth'
 import {
   addProposedChange,
@@ -77,6 +80,7 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         startISO: { type: 'string', description: 'Inclusive ISO start datetime.' },
         endISO: { type: 'string', description: 'Inclusive ISO end datetime.' },
         trainerId: { type: 'string', description: 'Optional trainer filter.' },
+        location: { type: 'string', description: "Optional: only sessions at this gym ('Celina' / 'McKinney'). 'none' = not tagged." },
       },
       required: ['startISO', 'endISO'],
     },
@@ -538,6 +542,10 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         },
         capacity: { type: 'number', description: 'Max athletes. Omit for no limit.' },
         description: { type: 'string', description: 'One line for parents: who it is for.' },
+        location: {
+          type: 'string',
+          description: "Which gym: 'Celina' or 'McKinney'. Omit if unknown — don't guess.",
+        },
       },
       required: ['name'],
     },
@@ -564,6 +572,7 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         openForSignup: { type: 'boolean' },
         capacity: { type: 'number', description: 'Max athletes. Pass 0 or null to clear.' },
         description: { type: 'string' },
+        location: { type: 'string', description: "'Celina' or 'McKinney'; '' clears it. Its sessions follow the group." },
       },
       required: ['groupId'],
     },
@@ -580,6 +589,10 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
         duration: { type: 'number', description: 'Minutes. Defaults to 60.' },
         groupId: { type: 'string', description: 'Optional: tie it to an existing group so the calendar labels it.' },
         notes: { type: 'string' },
+        location: {
+          type: 'string',
+          description: "Which gym: 'Celina' or 'McKinney'. Omit if unknown — don't guess.",
+        },
       },
       required: ['trainerId', 'dateISO'],
     },
@@ -778,6 +791,75 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'list_time_off',
+    description:
+      "Coach time off: pending requests waiting for a decision, and approved time off. Pending rows include the sessions that coach is booked on in that window — mention them, because approving leaves those sessions needing cover.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['pending', 'approved', 'all'], description: 'Defaults to pending.' },
+        trainerId: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'decide_time_off',
+    description:
+      "Approve or decline a coach's pending time-off request (requestId from list_time_off). Approving blocks new bookings for them in that window; it does NOT move sessions already booked — the result lists them so you can say which need a new coach or time. Only do this when the owner has said to.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        requestId: { type: 'string' },
+        decision: { type: 'string', enum: ['approve', 'decline'] },
+        note: { type: 'string', description: 'Optional note sent to the coach.' },
+      },
+      required: ['requestId', 'decision'],
+    },
+  },
+  {
+    name: 'add_time_off',
+    description:
+      "Record time off for a coach the owner is telling you about (e.g. 'Zeke is out Oct 3 through Oct 6'). Saved as approved. For whole days omit the minutes; for part of one day give startMinute/endMinute (minutes after midnight). Prefer this over add_availability_exception for vacations and days off — it shows on the calendar as time off.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        trainerId: { type: 'string' },
+        startDate: { type: 'string', description: 'YYYY-MM-DD' },
+        endDate: { type: 'string', description: 'YYYY-MM-DD, inclusive. Same as startDate for one day.' },
+        startMinute: { type: 'number' },
+        endMinute: { type: 'number' },
+        reason: { type: 'string' },
+      },
+      required: ['trainerId', 'startDate'],
+    },
+  },
+  {
+    name: 'get_health_notes',
+    description:
+      "Injuries, physical therapy and conditions on file for one or more athletes (e.g. before a session: 'anyone hurt in the 4pm group?'). Returns current notes by default. This is private medical information — share it only with the staff member you are talking to, never in anything sent to families or other athletes.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        athleteIds: { type: 'array', items: { type: 'string' } },
+        includePast: { type: 'boolean' },
+      },
+      required: ['athleteIds'],
+    },
+  },
+  {
+    name: 'send_waiver_link',
+    description:
+      "Make a one-time link for an athlete's family to sign the liability waiver (for profiles staff created, which never signed one). Emails it when the athlete has a real email; always returns the link so the owner can text it. Links last 14 days.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        athleteId: { type: 'string' },
+        email: { type: 'boolean', description: 'Send the email. Defaults to true.' },
+      },
+      required: ['athleteId'],
+    },
+  },
+  {
     name: 'list_absent_athletes',
     description:
       "Active athletes nobody has seen in N days (default 14) — the 'who should we reach out to' list. Each row says whether their last visit was CONFIRMED by attendance or only assumed from being booked; say so when it matters.",
@@ -919,18 +1001,34 @@ export async function dispatchTool(
       const start = new Date(String(input.startISO))
       const end = new Date(String(input.endISO))
       const trainerId = typeof input.trainerId === 'string' ? input.trainerId : undefined
-      const sessions = await listSessions({ gymId, start, end, trainerId })
+      const all = await listSessions({ gymId, start, end, trainerId })
+      let loc: string | null = null
+      if (typeof input.location === 'string' && input.location) {
+        if (input.location === 'none') loc = 'none'
+        else {
+          const r = await resolveLocation(gymId, input.location)
+          if (!r.ok) return { error: r.error }
+          loc = r.value
+        }
+      }
       const enriched = await db.session.findMany({
-        where: { id: { in: sessions.map((s) => s.id) } },
+        where: {
+          id: { in: all.map((s) => s.id) },
+          ...(loc ? sessionLocationWhere(loc) : {}),
+        },
         include: {
           athlete: { select: { firstName: true, lastName: true } },
           trainer: { include: { user: { select: { name: true } } } },
+          attendees: { include: { athlete: { select: { firstName: true, lastName: true } } } },
+          group: { select: { name: true, location: true } },
         },
       })
       const byId = new Map(enriched.map((s) => [s.id, s]))
+      const sessions = loc ? all.filter((s) => byId.has(s.id)) : all
       return sessions.map((s) => {
         const e = byId.get(s.id)
         return {
+          location: e ? effectiveLocation(e) : null,
           id: s.id,
           trainerName: e?.trainer.user.name ?? null,
           athleteName: e ? describeOccupant(e) : null,
@@ -1771,6 +1869,113 @@ export async function dispatchTool(
       }
     }
 
+    case 'list_time_off': {
+      const st = String(input.status ?? 'pending')
+      const rows = await listTimeOff(gymId, {
+        trainerId: input.trainerId ? String(input.trainerId) : undefined,
+        status: st === 'all' ? undefined : st === 'approved' ? ['approved'] : ['pending'],
+        from: st === 'pending' ? undefined : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z'),
+      })
+      return {
+        requests: await Promise.all(
+          rows.map(async (r) => ({
+            requestId: r.id,
+            coach: r.trainerName,
+            when: r.label,
+            reason: r.reason,
+            status: r.status,
+            ...(r.status === 'pending'
+              ? {
+                  bookedThen: (
+                    await sessionsDuring(
+                      gymId,
+                      r.trainerId,
+                      new Date(`${r.startDate}T00:00:00.000Z`),
+                      new Date(`${r.endDate}T00:00:00.000Z`),
+                      r.startMinute,
+                      r.endMinute
+                    )
+                  ).map((b) => `${b.when} · ${b.who}`),
+                }
+              : {}),
+          }))
+        ),
+      }
+    }
+
+    case 'decide_time_off': {
+      const id = String(input.requestId)
+      const note = typeof input.note === 'string' && input.note.trim() ? input.note.trim() : null
+      const byUserId = ctx.userId ?? 'chat'
+      if (input.decision === 'approve') {
+        const r = await approveTimeOff(id, gymId, byUserId, note)
+        if (!r.ok) return { ok: false, error: r.error }
+        await notifyTimeOffDecided(id)
+        return { ok: true, approved: true, sessionsStillBooked: r.stranded.map((b) => `${b.when} · ${b.who}`) }
+      }
+      const r = await declineTimeOff(id, gymId, byUserId, note)
+      if (!r.ok) return { ok: false, error: r.error }
+      await notifyTimeOffDecided(id)
+      return { ok: true, declined: true }
+    }
+
+    case 'add_time_off': {
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+      const created = await requestTimeOff({
+        gymId,
+        trainerId: String(input.trainerId),
+        startYMD: String(input.startDate ?? ''),
+        endYMD: String(input.endDate ?? input.startDate ?? ''),
+        startMinute: num(input.startMinute),
+        endMinute: num(input.endMinute),
+        reason: typeof input.reason === 'string' ? input.reason : null,
+        requestedById: ctx.userId ?? 'chat',
+      })
+      if (!created.ok) return { ok: false, error: created.error }
+      if (created.request.status !== 'pending') {
+        return { ok: true, alreadyRecorded: true }
+      }
+      const r = await approveTimeOff(created.request.id, gymId, ctx.userId ?? 'chat', null)
+      if (!r.ok) return { ok: false, error: r.error }
+      return { ok: true, sessionsStillBooked: r.stranded.map((b) => `${b.when} · ${b.who}`) }
+    }
+
+    case 'get_health_notes': {
+      const ids = Array.isArray(input.athleteIds) ? input.athleteIds.map(String).slice(0, 50) : []
+      const rows = await db.healthNote.findMany({
+        where: {
+          athleteId: { in: ids },
+          athlete: { gymId },
+          ...(input.includePast ? {} : { active: true }),
+        },
+        include: { athlete: { select: { firstName: true, lastName: true } } },
+        orderBy: [{ athleteId: 'asc' }, { active: 'desc' }],
+      })
+      return {
+        notes: rows.map((n) => ({
+          athlete: `${n.athlete.firstName} ${n.athlete.lastName}`,
+          kind: n.kind,
+          title: n.title,
+          details: n.details,
+          since: n.since,
+          current: n.active,
+        })),
+        athletesWithNothingOnFile: ids.length - new Set(rows.map((r) => r.athleteId)).size,
+      }
+    }
+
+    case 'send_waiver_link': {
+      const r = await createWaiverLink(String(input.athleteId), { send: input.email !== false })
+      if ('error' in r) return { ok: false, error: r.error }
+      return {
+        ok: true,
+        link: r.url,
+        emailed: r.emailed,
+        emailedTo: r.emailedTo,
+        note: r.emailed ? undefined : 'Not emailed (no real address on file) — give the owner the link to text.',
+      }
+    }
+
     case 'list_absent_athletes': {
       const days = Math.min(Math.max(Number(input.days ?? 14), 1), 180)
       const r = await absentAthletes(gymId, days)
@@ -1926,6 +2131,7 @@ export async function dispatchTool(
           id: g.id,
           name: g.name,
           active: g.active,
+          location: g.location,
           when:
             g.dayOfWeek !== null && g.startMinute !== null
               ? `${DAY_NAMES[g.dayOfWeek]} ${formatMinute(g.startMinute)} (${g.duration}min)`
@@ -1963,6 +2169,8 @@ export async function dispatchTool(
       if (dayOfWeek !== null && (dayOfWeek < 0 || dayOfWeek > 6)) {
         return { error: 'dayOfWeek must be 0 (Sun) to 6 (Sat).' }
       }
+      const groupLoc = await resolveLocation(gymId, input.location)
+      if (!groupLoc.ok) return { error: groupLoc.error }
       try {
         const group = await db.group.create({
           data: {
@@ -1978,6 +2186,7 @@ export async function dispatchTool(
                 ? null
                 : Number(input.capacity),
             description: input.description ? String(input.description) : null,
+            location: groupLoc.value,
             members: { create: athleteIds.map((athleteId) => ({ athleteId })) },
             coaches: {
               create: coachIds.map((trainerId, i) => ({ trainerId, isLead: i === 0 })),
@@ -2020,6 +2229,11 @@ export async function dispatchTool(
       }
       if (input.duration !== undefined) data.duration = Number(input.duration)
       if (input.active !== undefined) data.active = Boolean(input.active)
+      if (input.location !== undefined) {
+        const l = await resolveLocation(gymId, input.location)
+        if (!l.ok) return { error: l.error }
+        data.location = l.value
+      }
       if (input.notes !== undefined) data.notes = input.notes ? String(input.notes) : null
       if (input.openForSignup !== undefined) data.openForSignup = Boolean(input.openForSignup)
       if (input.description !== undefined)
@@ -2088,6 +2302,8 @@ export async function dispatchTool(
       const scheduledAt = new Date(String(input.dateISO))
       if (Number.isNaN(scheduledAt.getTime())) return { error: 'dateISO is not a valid datetime.' }
       const duration = typeof input.duration === 'number' ? input.duration : 60
+      const classLoc = await resolveLocation(gymId, input.location)
+      if (!classLoc.ok) return { error: classLoc.error }
       // No athlete, so only the coach and floor checks are meaningful.
       const validation = await validateBooking(gymId, {
         trainerId,
@@ -2107,6 +2323,7 @@ export async function dispatchTool(
           duration,
           groupId: input.groupId ? String(input.groupId) : null,
           notes: input.notes ? String(input.notes) : null,
+          location: classLoc.value,
           coaches: { create: [{ trainerId }] },
         },
       })

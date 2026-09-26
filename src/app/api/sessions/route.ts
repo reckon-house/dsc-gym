@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEFAULT_GYM_ID } from '@/lib/constants'
 import { validateBooking } from '@/lib/scheduling/engine'
+import { effectiveLocation, sessionLocationWhere } from '@/lib/locations'
 
 // GET /api/sessions - List sessions
 export async function GET(request: NextRequest) {
@@ -63,6 +64,12 @@ export async function GET(request: NextRequest) {
       where.cancelled = false
     }
 
+    // ?location=Celina, or ?location=none for sessions nobody has tagged.
+    const location = searchParams.get('location')
+    if (location) {
+      where.AND = [sessionLocationWhere(location)]
+    }
+
     const sessions = await db.session.findMany({
       where,
       include: {
@@ -94,6 +101,7 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        group: { select: { name: true, location: true } },
       },
       orderBy: {
         scheduledAt: 'asc',
@@ -103,6 +111,9 @@ export async function GET(request: NextRequest) {
     // Flatten the attendees into a simpler array for the client.
     const data = sessions.map((s) => ({
       ...s,
+      // Resolved: the session's own tag, else its group's.
+      location: effectiveLocation(s),
+      ownLocation: s.location,
       attendees: s.attendees.map((a) => ({
         id: a.athleteId,
         firstName: a.athlete.firstName,

@@ -162,6 +162,7 @@ export async function listOpenGroups(
       id: g.id,
       name: g.name,
       description: g.description,
+      location: g.location,
       dayOfWeek: g.dayOfWeek!,
       startMinute: g.startMinute!,
       duration: g.duration,

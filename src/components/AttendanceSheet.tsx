@@ -15,6 +15,8 @@ interface RosterRow {
   name: string
   status: 'present' | 'no_show' | null
   dropIn: boolean
+  /** Active injuries / PT / conditions. */
+  health?: string[]
 }
 
 interface Loaded {
@@ -187,13 +189,20 @@ export function AttendanceSheet({ sessionId, open, onClose, onSaved }: Props) {
                       key={row.athleteId}
                       type="button"
                       onClick={() => toggle(row.athleteId)}
-                      className={`w-full flex items-center justify-between gap-3 rounded-2xl px-4 h-14 text-left transition-colors ${
+                      className={`w-full flex items-center justify-between gap-3 rounded-2xl px-4 min-h-14 py-2 text-left transition-colors ${
                         gone ? 'bg-red-50 text-red-900' : 'bg-emerald-50 text-emerald-950'
                       }`}
                     >
-                      <span className="font-semibold truncate">
-                        {row.name}
-                        {row.dropIn && <span className="dsc-label opacity-60 ml-2">drop-in</span>}
+                      <span className="min-w-0">
+                        <span className="font-semibold truncate block">
+                          {row.name}
+                          {row.dropIn && <span className="dsc-label opacity-60 ml-2">drop-in</span>}
+                        </span>
+                        {row.health && row.health.length > 0 && (
+                          <span className="block text-xs text-rose-700 truncate">
+                            ⚠ {row.health.join(' · ')}
+                          </span>
+                        )}
                       </span>
                       <span className="dsc-label shrink-0">{gone ? 'No-show' : 'Here'}</span>
                     </button>

@@ -1,5 +1,6 @@
 'use client'
 
+import { useLocations } from '@/components/useLocations'
 import { useEffect, useState } from 'react'
 
 interface TrainerOpt {
@@ -20,6 +21,8 @@ export interface SessionDraft {
   scheduledAt?: string // ISO
   duration?: number
   attendees?: { id: string; firstName: string; lastName: string }[]
+  /** Effective location (own, else the group's). */
+  location?: string | null
 }
 
 interface Props {
@@ -59,6 +62,8 @@ export function SessionEditSheet({
   // because each add/remove is its own operation against one session.
   const [roster, setRoster] = useState<{ id: string; firstName: string; lastName: string }[]>([])
   const [adding, setAdding] = useState('')
+  const [location, setLocation] = useState('')
+  const locations = useLocations()
   const isEditing = Boolean(initial?.id)
 
   useEffect(() => {
@@ -68,6 +73,7 @@ export function SessionEditSheet({
     setWhen(toLocalDatetimeInput(initial?.scheduledAt))
     setDuration(initial?.duration ?? 60)
     setRoster(initial?.attendees ?? [])
+    setLocation(initial?.location ?? '')
     setAdding('')
     setError(null)
   }, [open, initial])
@@ -84,12 +90,26 @@ export function SessionEditSheet({
     }
     setSaving(true)
     try {
-      const body = {
-        trainerId,
-        athleteId,
-        scheduledAt: new Date(when).toISOString(),
-        duration,
-      }
+      const scheduledAt = new Date(when).toISOString()
+      const locationChanged = location !== (initial?.location ?? '')
+      const onlyLocation =
+        isEditing &&
+        locationChanged &&
+        trainerId === (initial?.trainerId ?? '') &&
+        athleteId === (initial?.athleteId ?? '') &&
+        duration === (initial?.duration ?? 60) &&
+        initial?.scheduledAt !== undefined &&
+        new Date(initial.scheduledAt).getTime() === new Date(scheduledAt).getTime()
+      // A retag alone skips rescheduling, so it works on past sessions too.
+      const body = onlyLocation
+        ? { location: location || null }
+        : {
+            trainerId,
+            athleteId,
+            scheduledAt,
+            duration,
+            ...(locationChanged || !isEditing ? { location: location || null } : {}),
+          }
       const url = isEditing ? `/api/admin/sessions/${initial!.id}` : '/api/admin/sessions'
       const method = isEditing ? 'PATCH' : 'POST'
       const res = await fetch(url, {
@@ -313,6 +333,25 @@ export function SessionEditSheet({
               ))}
             </div>
           </Field>
+
+          {locations.length > 0 && (
+            <Field label="Location">
+              <div className="flex gap-2 flex-wrap">
+                {['', ...locations].map((l) => (
+                  <button
+                    key={l || 'none'}
+                    type="button"
+                    onClick={() => setLocation(l)}
+                    className={`h-11 px-4 rounded-xl text-sm font-medium ${
+                      location === l ? 'bg-black text-white' : 'bg-black/5 text-black hover:bg-black/[0.08]'
+                    }`}
+                  >
+                    {l || 'Not set'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
 
           {error && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800">

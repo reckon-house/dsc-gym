@@ -7,6 +7,7 @@
 // deliberately a separate act so a roster edit can never silently rewrite
 // sessions people have already been told about.
 
+import { useLocations } from '@/components/useLocations'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AdminHeader } from '../_components/AdminHeader'
@@ -33,6 +34,7 @@ interface Group {
   openForSignup: boolean
   capacity: number | null
   description: string | null
+  location: string | null
   members: Member[]
   coaches: Coach[]
   _count: { sessions: number }
@@ -209,7 +211,10 @@ export default function GroupsPage() {
                           <span className="ml-2 dsc-label text-black/40">Retired</span>
                         )}
                       </div>
-                      <div className="dsc-label text-black/50 mt-1">{scheduleLine(g)}</div>
+                      <div className="dsc-label text-black/50 mt-1">
+                        {scheduleLine(g)}
+                        {g.location ? ` · ${g.location}` : ''}
+                      </div>
                       {g.openForSignup && (
                         <div className="dsc-label text-emerald-700 mt-1">
                           Open to families
@@ -342,6 +347,8 @@ function GroupSheet({
     group?.capacity === null || group?.capacity === undefined ? '' : String(group.capacity)
   )
   const [description, setDescription] = useState(group?.description ?? '')
+  const [location, setLocation] = useState(group?.location ?? '')
+  const locations = useLocations()
   const [leadId, setLeadId] = useState<string>(
     group?.coaches.find((c) => c.isLead)?.trainerId ?? ''
   )
@@ -403,6 +410,7 @@ function GroupSheet({
             openForSignup,
             capacity: capacity.trim() === '' ? null : Number(capacity),
             description: description.trim() || null,
+            location: location || null,
           }),
         })
         const data = await res.json()
@@ -427,6 +435,7 @@ function GroupSheet({
             openForSignup,
             capacity: capacity.trim() === '' ? null : Number(capacity),
             description: description.trim() || null,
+            location: location || null,
           }),
         })
         const data = await res.json()
@@ -534,6 +543,25 @@ function GroupSheet({
               ))}
             </div>
           </Field>
+
+          {locations.length > 0 && (
+            <Field label="Location">
+              <div className="flex gap-1.5 flex-wrap">
+                {['', ...locations].map((l) => (
+                  <button
+                    key={l || 'none'}
+                    type="button"
+                    onClick={() => setLocation(l)}
+                    className={`h-10 px-4 rounded-full text-sm font-semibold ${
+                      location === l ? 'bg-black text-white' : 'bg-black/5 text-black/70'
+                    }`}
+                  >
+                    {l || 'Not set'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
 
           <div className="rounded-2xl bg-black/[0.04] p-3 space-y-3">
             <label className="flex items-start gap-3 cursor-pointer">
