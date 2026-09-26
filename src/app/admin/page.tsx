@@ -80,6 +80,7 @@ const CARDS: {
 // everyday jobs stay the thing you see first — and so an odd count doesn't
 // leave a hole in a two-column layout.
 const LINKS: { href: string; label: string; desc: string }[] = [
+  { href: '/admin/leads', label: 'Leads', desc: 'Waitlist & follow-ups' },
   { href: '/admin/groups', label: 'Groups', desc: 'Rosters & standing times' },
   { href: '/admin/blasts', label: 'Announcements', desc: 'Email the gym' },
   { href: '/admin/recovery', label: 'Recovery', desc: 'Room charges' },
@@ -101,6 +102,7 @@ export default function AdminHome() {
   const [owed, setOwed] = useState<{ id: string; scheduledAt: string; coach: string; label: string }[]>([])
   const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
   const [timeOff, setTimeOff] = useState<TimeOffPending[]>([])
+  const [leadsDue, setLeadsDue] = useState<{ id: string; name: string; followUpOn: string | null; interest: string | null }[]>([])
   // Lives here, not in the box: approving the last request empties the list,
   // and the "still booked" warning must outlive it.
   const [timeOffLeftover, setTimeOffLeftover] = useState<Leftover | null>(null)
@@ -122,7 +124,7 @@ export default function AdminHome() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each panel checks its own shape
     type Res = { success: boolean; data?: any }
     const safe = (p: Promise<Res>): Promise<Res> => p.catch(() => ({ success: false }))
-    const [t, w, u, br, ev, gr, ab, ow, to] = await Promise.all([
+    const [t, w, u, br, ev, gr, ab, ow, to, ld] = await Promise.all([
       safe(fetch('/api/trainers').then(json)),
       safe(fetch('/api/walkins').then(json)),
       safe(fetch('/api/athletes?unassigned=true').then(json)),
@@ -132,6 +134,7 @@ export default function AdminHome() {
       safe(fetch('/api/admin/attendance/absent?days=14').then(json)),
       safe(fetch('/api/attendance/owed').then(json)),
       safe(fetch('/api/time-off?status=pending').then(json)),
+      safe(fetch('/api/admin/leads?due=1').then(json)),
     ])
     if (t.success) setTrainers(t.data)
     if (w.success) setWalkIns(w.data)
@@ -145,6 +148,16 @@ export default function AdminHome() {
     }
     if (ow.success) setOwed(ow.data)
     if (to.success) setTimeOff(to.data)
+    if (ld.success) {
+      setLeadsDue(
+        ld.data.map((l: { id: string; firstName: string; lastName: string | null; followUpOn: string | null; interest: string | null }) => ({
+          id: l.id,
+          name: [l.firstName, l.lastName].filter(Boolean).join(' '),
+          followUpOn: l.followUpOn,
+          interest: l.interest,
+        }))
+      )
+    }
   }, [])
 
   function summarizeRequest(r: BookingRequest): RequestSummary {
@@ -311,8 +324,27 @@ export default function AdminHome() {
         absent.length > 0 ||
         timeOff.length > 0 ||
         timeOffLeftover !== null ||
+        leadsDue.length > 0 ||
         owed.length > 0) && (
         <div className="px-4 space-y-2 pb-2">
+          {leadsDue.length > 0 && (
+            <Link
+              href="/admin/leads"
+              className="block px-4 py-3 rounded-2xl bg-violet-50 border border-violet-200 max-w-3xl mx-auto hover:bg-violet-100"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2 h-2 rounded-full bg-violet-600" aria-hidden />
+                <span className="dsc-label text-violet-900">Lead follow-ups due · {leadsDue.length}</span>
+              </div>
+              <div className="text-sm text-violet-950 truncate">
+                {leadsDue
+                  .slice(0, 4)
+                  .map((l) => l.name)
+                  .join(', ')}
+                {leadsDue.length > 4 ? ` +${leadsDue.length - 4} more` : ''}
+              </div>
+            </Link>
+          )}
           {(timeOff.length > 0 || timeOffLeftover) && (
             <TimeOffBox
               requests={timeOff}

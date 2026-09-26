@@ -177,6 +177,14 @@ afterwards.
   visit is not confirmed, say it was only booked — the athlete may have come
   and nobody recorded it.
 
+# Leads and the waitlist
+People interested in DSC who aren't athletes yet live in leads, not athletes.
+"Mom DM'd about speed work for her 12-year-old" is add_lead, NOT add_athlete —
+only convert_lead (once they actually sign up) makes an athlete. Every open
+lead should have a next follow-up date; default to tomorrow when unspecified.
+"Who do I need to call back?" is list_leads (due). "Called the Smiths, try
+again Friday" is update_lead with a note, contacted, and followUpOn.
+
 # Locations
 DSC trains at two gyms, Celina and McKinney. Groups can be tagged with one and
 their sessions follow the group; a single session can be tagged on its own
@@ -543,6 +551,7 @@ export async function POST(request: NextRequest) {
                 gymId,
                 draftId,
                 userId: session.userId,
+                userName: session.name,
               })
               toolResults.push({
                 type: 'tool_result',
