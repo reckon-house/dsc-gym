@@ -13,6 +13,7 @@ import { addAthleteToGroup, removeAthleteFromGroup } from '@/lib/groups'
 import { notifyGroupJoinResolved, notifyTimeOffDecided } from '@/lib/notify'
 import { approveTimeOff, declineTimeOff, listTimeOff, requestTimeOff, sessionsDuring } from '@/lib/timeOff'
 import { createWaiverLink } from '@/lib/waiverLink'
+import { addLeadNote, convertLead, createLead, leadSummary, listLeads, updateLead, LEAD_STATUSES, type LeadStatus } from '@/lib/leads'
 import { effectiveLocation, resolveLocation, sessionLocationWhere } from '@/lib/locations'
 import { hashPassword, MIN_PASSWORD_LENGTH, generateTempPassword } from '@/lib/auth'
 import {
@@ -834,6 +835,83 @@ export const SCHEDULING_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'add_lead',
+    description:
+      "Record someone interested in DSC who isn't an athlete yet (a DM, walk-in, referral, event contact) or put them on a group's waitlist. Always set followUpOn — a lead with no next step gets forgotten; default to tomorrow if the owner doesn't say. Returns possible duplicates (same phone/email as an existing lead or athlete) — mention them.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        firstName: { type: 'string', description: "The athlete's first name." },
+        lastName: { type: 'string' },
+        parentName: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        birthdate: { type: 'string', description: 'YYYY-MM-DD, if known.' },
+        interest: { type: 'string', description: 'What they want, in a few words.' },
+        source: { type: 'string', enum: ['instagram', 'referral', 'website', 'walk_in', 'event', 'google', 'other'] },
+        sourceDetail: { type: 'string', description: 'Who referred them, which event, etc.' },
+        status: { type: 'string', enum: ['new', 'contacted', 'trial', 'waitlist'] },
+        groupId: { type: 'string', description: 'For a waitlist spot in a specific group.' },
+        location: { type: 'string', description: "'Celina' or 'McKinney' if they said." },
+        followUpOn: { type: 'string', description: 'YYYY-MM-DD, gym-local.' },
+        note: { type: 'string', description: 'First note: what they said.' },
+      },
+      required: ['firstName'],
+    },
+  },
+  {
+    name: 'list_leads',
+    description:
+      "Leads and waitlist. 'due' = open leads whose follow-up date is today or earlier (the to-do list). Also returns counts. Use search to find one by name/phone.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string', enum: ['due', 'open', 'waitlist', 'converted', 'lost', 'all'], description: 'Defaults to due.' },
+        search: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_lead',
+    description:
+      "Log a touch on a lead and/or change it: add a note ('texted, she wants Tuesdays'), mark that they were contacted, set the next follow-up, change stage (new/contacted/trial/waitlist/lost) or fix details. When logging a contact, also set the next followUpOn unless the lead is closed.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        leadId: { type: 'string' },
+        note: { type: 'string' },
+        contacted: { type: 'boolean', description: 'True if someone reached out / talked to them.' },
+        followUpOn: { type: 'string', description: 'YYYY-MM-DD, or empty string to clear.' },
+        status: { type: 'string', enum: ['new', 'contacted', 'trial', 'waitlist', 'lost'] },
+        lostReason: { type: 'string' },
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        parentName: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        interest: { type: 'string' },
+        groupId: { type: 'string' },
+        location: { type: 'string' },
+      },
+      required: ['leadId'],
+    },
+  },
+  {
+    name: 'convert_lead',
+    description:
+      "They signed up: turn a lead into a real athlete, carrying over their details, and add them to the group they were waitlisted for. Needs a last name. Only on the owner's say-so. Afterwards, offer send_waiver_link for the new athlete.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        leadId: { type: 'string' },
+        lastName: { type: 'string', description: 'Required if the lead has none.' },
+        trainerId: { type: 'string', description: 'Optional coach to assign.' },
+        addToGroup: { type: 'boolean', description: 'Defaults to true.' },
+      },
+      required: ['leadId'],
+    },
+  },
+  {
     name: 'get_health_notes',
     description:
       "Injuries, physical therapy and conditions on file for one or more athletes (e.g. before a session: 'anyone hurt in the 4pm group?'). Returns current notes by default. This is private medical information — share it only with the staff member you are talking to, never in anything sent to families or other athletes.",
@@ -908,6 +986,7 @@ interface DispatchContext {
   draftId: string
   /** Who is chatting, so actions like attendance are attributed to them. */
   userId?: string
+  userName?: string
 }
 
 export async function dispatchTool(
@@ -1938,6 +2017,104 @@ export async function dispatchTool(
       const r = await approveTimeOff(created.request.id, gymId, ctx.userId ?? 'chat', null)
       if (!r.ok) return { ok: false, error: r.error }
       return { ok: true, sessionsStillBooked: r.stranded.map((b) => `${b.when} · ${b.who}`) }
+    }
+
+    case 'add_lead': {
+      const by = { userId: ctx.userId ?? 'chat', name: ctx.userName ?? 'Scheduler' }
+      const r = await createLead(gymId, input as Record<string, unknown>, by)
+      if (!r.ok) return { error: r.error }
+      const d = r.duplicates
+      return {
+        ok: true,
+        leadId: r.lead.id,
+        status: r.lead.status,
+        followUpOn: r.lead.followUpOn?.toISOString().slice(0, 10) ?? null,
+        ...(d.athletes.length || d.leads.length
+          ? {
+              possibleDuplicates: [
+                ...d.athletes.map((a) => `${a.firstName} ${a.lastName} (athlete${a.archived ? ', archived' : ''})`),
+                ...d.leads.map((l) => `${[l.firstName, l.lastName].filter(Boolean).join(' ')} (lead, ${l.status})`),
+              ],
+            }
+          : {}),
+      }
+    }
+
+    case 'list_leads': {
+      const view = String(input.view ?? 'due')
+      const status: LeadStatus[] | undefined =
+        view === 'open'
+          ? ['new', 'contacted', 'trial']
+          : (LEAD_STATUSES as readonly string[]).includes(view)
+            ? [view as LeadStatus]
+            : undefined
+      const [rows, summary] = await Promise.all([
+        listLeads(gymId, {
+          due: view === 'due',
+          status: view === 'due' || view === 'all' ? undefined : status,
+          search: typeof input.search === 'string' ? input.search : undefined,
+        }),
+        leadSummary(gymId),
+      ])
+      return {
+        summary,
+        leads: rows.slice(0, 40).map((l) => ({
+          leadId: l.id,
+          name: [l.firstName, l.lastName].filter(Boolean).join(' '),
+          parent: l.parentName,
+          phone: l.phone,
+          interest: l.interest,
+          source: l.source,
+          status: l.status,
+          followUpOn: l.followUpOn?.toISOString().slice(0, 10) ?? null,
+          lastNote: l.notes[0]?.body ?? null,
+        })),
+        ...(rows.length > 40 ? { truncated: rows.length - 40 } : {}),
+      }
+    }
+
+    case 'update_lead': {
+      const leadId = String(input.leadId)
+      const by = { name: ctx.userName ?? 'Scheduler' }
+      const { leadId: _omit, note, contacted, followUpOn, ...fields } = input as Record<string, unknown>
+      void _omit
+      if (Object.keys(fields).length) {
+        const r = await updateLead(gymId, leadId, fields, by)
+        if (!r.ok) return { error: r.error }
+      }
+      if (typeof note === 'string' && note.trim()) {
+        const r = await addLeadNote(gymId, leadId, note, by, { contacted: Boolean(contacted), followUpOn })
+        if (!r.ok) return { error: r.error }
+      } else if (followUpOn !== undefined) {
+        const r = await updateLead(gymId, leadId, { followUpOn }, by)
+        if (!r.ok) return { error: r.error }
+      }
+      const lead = await db.lead.findUnique({ where: { id: leadId } })
+      return {
+        ok: true,
+        status: lead?.status,
+        followUpOn: lead?.followUpOn?.toISOString().slice(0, 10) ?? null,
+      }
+    }
+
+    case 'convert_lead': {
+      const r = await convertLead(
+        gymId,
+        String(input.leadId),
+        {
+          lastName: typeof input.lastName === 'string' ? input.lastName : null,
+          trainerId: typeof input.trainerId === 'string' ? input.trainerId : null,
+          addToGroup: input.addToGroup !== false,
+        },
+        { name: ctx.userName ?? 'Scheduler' }
+      )
+      if (!r.ok) return { error: r.error }
+      return {
+        ...r,
+        note: r.placeholderEmail
+          ? 'No email on file — they got a placeholder. The waiver link will need to be texted.'
+          : 'Offer to send the waiver link.',
+      }
     }
 
     case 'get_health_notes': {

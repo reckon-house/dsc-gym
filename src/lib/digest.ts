@@ -128,6 +128,33 @@ export async function sendDailyDigest(
     for (const u of targets) if (u) noteStaff(u.id, u.name, u.email, line)
   }
 
+  // Lead follow-ups due go to admins — the people who work the front office.
+  // An admin with no sessions still gets a digest when leads are waiting.
+  const today = new Date(Date.UTC(
+    Number(formatInZone(now, zone, { year: 'numeric' })),
+    Number(formatInZone(now, zone, { month: '2-digit' })) - 1,
+    Number(formatInZone(now, zone, { day: '2-digit' }))
+  ))
+  const due = await db.lead.findMany({
+    where: { gymId, status: { in: ['new', 'contacted', 'trial', 'waitlist'] }, followUpOn: { lte: today } },
+    select: { firstName: true, lastName: true },
+    orderBy: { followUpOn: 'asc' },
+  })
+  const followUps = due.length
+    ? {
+        summary: `${due.length} lead follow-up${due.length === 1 ? '' : 's'} due: ${due
+          .slice(0, 5)
+          .map((l) => [l.firstName, l.lastName].filter(Boolean).join(' '))
+          .join(', ')}${due.length > 5 ? ` +${due.length - 5} more` : ''}`,
+        url: `${baseUrl()}/admin/leads`,
+      }
+    : null
+  const admins = followUps
+    ? await db.user.findMany({ where: { role: 'ADMIN', active: true }, select: { id: true, name: true, email: true } })
+    : []
+  for (const a of admins) if (!staff.has(a.id)) staff.set(a.id, { name: a.name, email: a.email, lines: [] })
+  const adminIds = new Set(admins.map((a) => a.id))
+
   for (const [userId, row] of staff) {
     if (!isDeliverableEmail(row.email)) {
       report.skippedBadEmail.push(`${row.name} (staff)`)
@@ -143,6 +170,7 @@ export async function sendDailyDigest(
       lines: row.lines.sort(byTime),
       url: dayUrl,
       audience: 'staff',
+      followUps: adminIds.has(userId) ? followUps : null,
     })
     if (sent === 'sent') report.sentToStaff++
     else if (sent === 'duplicate') report.alreadySent++
@@ -221,6 +249,7 @@ async function deliver(args: {
   lines: Line[]
   url: string
   audience: 'staff' | 'family'
+  followUps?: { summary: string; url: string } | null
 }): Promise<'sent' | 'failed' | 'duplicate'> {
   let logId: string
   try {
@@ -248,6 +277,7 @@ async function deliver(args: {
       url: args.url,
       audience: args.audience,
       logoUrl: process.env.EMAIL_LOGO_URL,
+      followUps: args.followUps ?? null,
     })
     const { delivered } = await sendEmail({
       to: args.to,

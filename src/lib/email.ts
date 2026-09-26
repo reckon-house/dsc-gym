@@ -784,6 +784,8 @@ export function buildDailyDigestEmail(args: {
   url: string
   audience: 'staff' | 'family'
   logoUrl?: string
+  /** Admins only: "3 lead follow-ups due: …" */
+  followUps?: { summary: string; url: string } | null
 }): { subject: string; text: string; html: string } {
   const subject =
     args.audience === 'staff'
@@ -793,7 +795,9 @@ export function buildDailyDigestEmail(args: {
   const count = args.lines.length
   const intro =
     count === 0
-      ? 'Nothing on your schedule today.'
+      ? args.followUps
+        ? 'No sessions for you today.'
+        : 'Nothing on your schedule today.'
       : args.audience === 'staff'
         ? `${count} thing${count === 1 ? '' : 's'} on your floor today.`
         : `${count} session${count === 1 ? '' : 's'} today.`
@@ -803,7 +807,7 @@ export function buildDailyDigestEmail(args: {
 ${intro}
 
 ${args.lines.map((l) => `${l.time}  ${l.who} — ${l.detail}`).join('\n')}
-
+${args.followUps ? `\n${args.followUps.summary}\n${args.followUps.url}\n` : ''}
 Full day: ${args.url}
 
 — Dallas Sport Collective`
@@ -824,9 +828,18 @@ Full day: ${args.url}
     logoUrl: args.logoUrl,
     headline: args.audience === 'staff' ? 'Your day' : 'Today',
     intro,
-    bodyHtml: count
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">${rows}</table>`
-      : undefined,
+    bodyHtml:
+      count || args.followUps
+        ? `${
+            count
+              ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">${rows}</table>`
+              : ''
+          }${
+            args.followUps
+              ? `<p style="margin:${count ? '16px' : '0'} 0 0 0;font-size:14px;color:#141414;"><a href="${escapeAttr(args.followUps.url)}" style="color:#141414;">${escapeHtml(args.followUps.summary)}</a></p>`
+              : ''
+          }`
+        : undefined,
     buttonLabel: args.audience === 'staff' ? 'Open the day' : 'See the schedule',
     buttonUrl: args.url,
     fallbackLabel: 'Or open this link:',

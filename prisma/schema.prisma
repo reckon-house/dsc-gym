@@ -800,3 +800,57 @@ model HealthNote {
 
   @@index([athleteId, active])
 }
+
+/// Someone interested who isn't an athlete yet: a DM, a walk-in, a referral, a
+/// parent at a tournament. Before this they lived in texts and memory. A lead
+/// moves through statuses until it is converted (becomes an Athlete — the link
+/// is kept) or lost. "Waitlist" is a status, optionally for a specific group.
+model Lead {
+  id                 String    @id @default(cuid())
+  gymId              String
+  /// The athlete's name. Parent details are separate because for kids the
+  /// person you talk to is rarely the person who trains.
+  firstName          String
+  lastName           String?
+  parentName         String?
+  email              String?
+  phone              String?
+  birthdate          DateTime? @db.Date
+  /// What they want: "speed work", "the Thursday basketball group".
+  interest           String?
+  /// instagram | referral | website | walk_in | event | google | other
+  source             String    @default("other")
+  /// "Referred by the Smiths", "Celina fall showcase".
+  sourceDetail       String?
+  /// new | contacted | trial | waitlist | converted | lost
+  status             String    @default("new")
+  location           String?
+  /// Waitlisted for this group, when it is full.
+  groupId            String?
+  followUpOn         DateTime? @db.Date
+  lastContactedAt    DateTime?
+  lostReason         String?
+  convertedAthleteId String?
+  convertedAt        DateTime?
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  notes LeadNote[]
+
+  @@index([gymId, status])
+  @@index([gymId, followUpOn])
+}
+
+/// A dated line in a lead's history: "Called, mom wants Tuesdays". Notes are
+/// append-only so the story of how someone became a member survives.
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  body      String
+  byName    String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
