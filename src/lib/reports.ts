@@ -27,6 +27,8 @@ export interface AttendanceRow {
   sessions: number
   /** Physical kiosk check-ins in the same window. */
   checkIns: number
+  /** Marked no-show by a coach. Not counted in `sessions`. */
+  noShows: number
   /** Distinct coaches they trained with. */
   coaches: string[]
   lastSession: string | null
@@ -91,6 +93,22 @@ export async function attendanceReport(
   for (const s of sessions) {
     for (const a of s.attendees) {
       if (a.athlete.archived) continue
+      if (a.status === 'no_show') {
+        const row = byAthlete.get(a.athleteId)
+        if (row) row.noShows++
+        else
+          byAthlete.set(a.athleteId, {
+            athleteId: a.athleteId,
+            name: `${a.athlete.firstName} ${a.athlete.lastName}`,
+            sessions: 0,
+            noShows: 1,
+            checkIns: checkInBy.get(a.athleteId) ?? 0,
+            coaches: [],
+            lastSession: null,
+            coachSet: new Set<string>(),
+          })
+        continue
+      }
       attendances++
       const existing =
         byAthlete.get(a.athleteId) ??
@@ -98,6 +116,7 @@ export async function attendanceReport(
           athleteId: a.athleteId,
           name: `${a.athlete.firstName} ${a.athlete.lastName}`,
           sessions: 0,
+          noShows: 0,
           checkIns: checkInBy.get(a.athleteId) ?? 0,
           coaches: [],
           lastSession: null,
@@ -116,6 +135,7 @@ export async function attendanceReport(
 
   const rows: AttendanceRow[] = [...byAthlete.values()]
     .map(({ coachSet, ...r }) => ({ ...r, coaches: [...coachSet].sort() }))
+    .filter((r) => r.sessions > 0 || r.noShows > 0)
     // Most frequent first — the question is usually "who is here a lot" or
     // "who has dropped off", and both are answered from the ends of this list.
     .sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name))
@@ -132,7 +152,7 @@ export async function attendanceReport(
       checkIns: [...checkInBy.values()].reduce((n, x) => n + x, 0),
     },
     basis:
-      'Counts are sessions the athlete was rostered for and that have already started. Kiosk check-ins are listed separately; this gym records very few, so treat the check-in column as incomplete rather than as absence.',
+      'Counts sessions the athlete attended. Where a coach took attendance, no-shows are excluded and counted separately; where attendance was never taken, being on the roster is counted as attending. Kiosk check-ins are listed separately.',
   }
 }
 

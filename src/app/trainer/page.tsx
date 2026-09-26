@@ -8,6 +8,7 @@ import {
   TrainerScheduleSheet,
   type TrainerSessionDraft,
 } from './_components/TrainerScheduleSheet'
+import { AttendanceSheet } from '@/components/AttendanceSheet'
 
 interface SessionRow {
   id: string
@@ -16,7 +17,25 @@ interface SessionRow {
   duration: number
   cancelled: boolean
   completed: boolean
-  athlete: { firstName: string; lastName: string }
+  // Null for an open class nobody has joined yet.
+  athlete: { firstName: string; lastName: string } | null
+  attendees?: { id: string; firstName: string; lastName: string }[]
+}
+
+interface OwedRow {
+  id: string
+  scheduledAt: string
+  duration: number
+  label: string
+  count: number
+}
+
+/** First name(s) for a session pill — never assumes a primary athlete exists. */
+function who(s: SessionRow, full = false): string {
+  const people = s.attendees?.length ? s.attendees : s.athlete ? [s.athlete] : []
+  if (people.length === 0) return 'Open class'
+  if (people.length > 1) return `${people[0].firstName} +${people.length - 1}`
+  return full ? `${people[0].firstName} ${people[0].lastName}` : people[0].firstName
 }
 
 interface AthleteRow {
@@ -56,6 +75,8 @@ export default function TrainerDashboard() {
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [athletes, setAthletes] = useState<AthleteRow[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [owed, setOwed] = useState<OwedRow[]>([])
+  const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
   const [sheetInitial, setSheetInitial] = useState<TrainerSessionDraft | null>(null)
 
   function openCreate() {
@@ -83,6 +104,12 @@ export default function TrainerDashboard() {
     if (data.success) setSessions(data.data)
   }, [])
 
+  const loadOwed = useCallback(async () => {
+    const res = await fetch('/api/attendance/owed')
+    const data = await res.json()
+    if (data.success) setOwed(data.data)
+  }, [])
+
   const loadAthletes = useCallback(async () => {
     const res = await fetch('/api/athletes')
     const data = await res.json()
@@ -108,7 +135,8 @@ export default function TrainerDashboard() {
   useEffect(() => {
     loadSessions()
     loadAthletes()
-  }, [loadSessions, loadAthletes])
+    loadOwed()
+  }, [loadSessions, loadAthletes, loadOwed])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -194,22 +222,61 @@ export default function TrainerDashboard() {
               </div>
               <div className="space-y-2">
                 {todaySessions.map((s) => (
-                  <div
+                  <button
                     key={s.id}
-                    className="flex items-baseline justify-between"
+                    type="button"
+                    onClick={s.cancelled ? undefined : () => setAttendanceFor(s.id)}
+                    className="w-full flex items-baseline justify-between gap-3 text-left rounded-xl -mx-2 px-2 py-1 hover:bg-white/10"
                   >
                     <div className="dsc-headline text-2xl text-white">
                       {fmtTime(s.scheduledAt)}
                     </div>
-                    <div className="text-white/80 text-sm">
-                      {s.athlete.firstName} {s.athlete.lastName} · {s.duration}m
+                    <div className="text-white/80 text-sm text-right">
+                      {who(s, true)} · {s.duration}m
+                      <div className="dsc-label text-white/50">
+                        {s.completed ? 'Attendance taken' : 'Tap to take attendance'}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           )}
         </section>
+
+        {/* Attendance still owed. Past sessions only; the list is the
+            reminder, so nobody has to remember to go looking. */}
+        {owed.length > 0 && (
+          <section>
+            <div className="dsc-label text-black/50 mb-3">
+              Needs attendance · {owed.length}
+            </div>
+            <div className="space-y-2">
+              {owed.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => setAttendanceFor(o.id)}
+                  className="w-full rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-amber-100"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-black truncate">{o.label}</div>
+                    <div className="dsc-label text-black/50 mt-0.5">
+                      {new Date(o.scheduledAt).toLocaleString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </div>
+                  </div>
+                  <span className="dsc-label text-amber-800 shrink-0">Take it</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* This week */}
         <section>
@@ -263,9 +330,7 @@ export default function TrainerDashboard() {
                             <span className="font-mono text-[10px] opacity-80">
                               {fmtTime(s.scheduledAt)}
                             </span>
-                            <span className="font-medium">
-                              {s.athlete.firstName}
-                            </span>
+                            <span className="font-medium">{who(s)}</span>
                           </button>
                         )
                       })
@@ -311,6 +376,16 @@ export default function TrainerDashboard() {
           )}
         </section>
       </div>
+
+      <AttendanceSheet
+        sessionId={attendanceFor}
+        open={attendanceFor !== null}
+        onClose={() => setAttendanceFor(null)}
+        onSaved={() => {
+          loadSessions()
+          loadOwed()
+        }}
+      />
 
       <TrainerScheduleSheet
         open={sheetOpen}

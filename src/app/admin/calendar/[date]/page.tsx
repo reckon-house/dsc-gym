@@ -10,6 +10,7 @@ import {
 } from '../../_components/SessionEditSheet'
 import { MeetingSheet, type MeetingDraft } from '../../_components/MeetingSheet'
 import { RecoverySheet, type RecoveryDraft } from '../../_components/RecoverySheet'
+import { AttendanceSheet } from '@/components/AttendanceSheet'
 
 interface DaySession {
   id: string
@@ -100,6 +101,7 @@ export default function CalendarDayDetail() {
   const [athletes, setAthletes] = useState<AthleteOpt[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [draft, setDraft] = useState<SessionDraft | null>(null)
+  const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
   const [meetingOpen, setMeetingOpen] = useState(false)
   const [meetingDraft, setMeetingDraft] = useState<MeetingDraft | null>(null)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
@@ -498,39 +500,67 @@ export default function CalendarDayDetail() {
                       : s.groupName
                         ? `${s.groupName} — open`
                         : 'Open class — no one yet'
+              // Attendance opens an hour before the start, matching the server.
+              const started = new Date(s.scheduledAt).getTime() <= Date.now() + 60 * 60_000
               return (
-                <button
+                <div
                   key={s.id}
-                  onClick={s.cancelled ? undefined : () => handleTap(s)}
-                  disabled={s.cancelled}
-                  className={`w-full rounded-3xl p-5 flex items-center justify-between gap-4 ${
+                  className={`w-full rounded-3xl flex items-stretch ${
                     s.cancelled
                       ? 'bg-black/[0.04] text-black/40 line-through'
                       : s.completed
                         ? 'bg-emerald-100 text-emerald-900'
-                        : 'bg-black text-white hover:bg-black/90 active:opacity-80'
+                        : 'bg-black text-white'
                   }`}
                 >
-                  <div className="flex items-baseline gap-4 min-w-0 text-left">
-                    <div className="font-mono text-sm opacity-75 shrink-0 w-16">
-                      {fmtTime(s.scheduledAt)}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">{displayName}</div>
-                      <div className="dsc-label opacity-60 mt-0.5">
-                        {s.trainer.user.name} · {s.duration} min
+                  <button
+                    onClick={s.cancelled ? undefined : () => handleTap(s)}
+                    disabled={s.cancelled}
+                    className="flex-1 min-w-0 p-5 flex items-center justify-between gap-4 rounded-3xl hover:bg-white/5 active:opacity-80"
+                  >
+                    <div className="flex items-baseline gap-4 min-w-0 text-left">
+                      <div className="font-mono text-sm opacity-75 shrink-0 w-16">
+                        {fmtTime(s.scheduledAt)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{displayName}</div>
+                        <div className="dsc-label opacity-60 mt-0.5">
+                          {s.trainer.user.name} · {s.duration} min
+                          {s.completed ? ' · attendance taken' : ''}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  {!s.cancelled && (
-                    <span className="dsc-label opacity-50 shrink-0">Edit</span>
+                    {!s.cancelled && !started && (
+                      <span className="dsc-label opacity-50 shrink-0">Edit</span>
+                    )}
+                  </button>
+                  {!s.cancelled && started && (
+                    <button
+                      onClick={() => setAttendanceFor(s.id)}
+                      className={`shrink-0 px-4 my-3 mr-3 rounded-2xl dsc-label ${
+                        s.completed
+                          ? 'bg-emerald-900/10 hover:bg-emerald-900/20'
+                          : 'bg-white/15 hover:bg-white/25'
+                      }`}
+                    >
+                      {s.completed ? 'Attendance' : 'Take attendance'}
+                    </button>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>
         )}
       </div>
+
+      <AttendanceSheet
+        sessionId={attendanceFor}
+        open={attendanceFor !== null}
+        onClose={() => setAttendanceFor(null)}
+        onSaved={() => {
+          loadSessions()
+        }}
+      />
 
       <SessionEditSheet
         open={sheetOpen}

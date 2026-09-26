@@ -311,6 +311,8 @@ export default function AthleteDetail() {
           </div>
         )}
 
+        <VisitHistory athleteId={athlete.id} />
+
         {/* Standing weekly slots */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -646,6 +648,119 @@ function AddStandingSlotSheet({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+interface VisitRow {
+  sessionId: string
+  at: string
+  coach: string
+  groupName: string | null
+  status: 'present' | 'no_show' | 'not_recorded' | 'checked_in'
+  dropIn: boolean
+}
+
+/**
+ * When they actually came. Reads attendance, not the booking, so a no-show
+ * shows as one — this is the record Jordan and Scott reconcile payments
+ * against, and it is only as good as coaches taking attendance.
+ */
+function VisitHistory({ athleteId }: { athleteId: string }) {
+  const [visits, setVisits] = useState<VisitRow[] | null>(null)
+  const [summary, setSummary] = useState<{
+    attended: number
+    noShows: number
+    notRecorded: number
+    dropIns: number
+    lastAttended: string | null
+  } | null>(null)
+  const [showAll, setShowAll] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/athletes/${athleteId}/visits`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setVisits(d.data.visits)
+          setSummary(d.data.summary)
+        }
+      })
+  }, [athleteId])
+
+  if (!visits || !summary) return null
+  if (visits.length === 0) {
+    return (
+      <div className="rounded-3xl bg-black/[0.04] p-5 mb-8">
+        <div className="dsc-label text-black/40 mb-1">Visits</div>
+        <p className="text-sm text-black/60">No past sessions yet.</p>
+      </div>
+    )
+  }
+
+  const shown = showAll ? visits : visits.slice(0, 8)
+  const label: Record<VisitRow['status'], string> = {
+    present: 'Came',
+    no_show: 'No-show',
+    not_recorded: 'Not recorded',
+    checked_in: 'Checked in',
+  }
+  const tone: Record<VisitRow['status'], string> = {
+    present: 'text-emerald-800',
+    checked_in: 'text-emerald-800',
+    no_show: 'text-red-700',
+    not_recorded: 'text-black/40',
+  }
+
+  return (
+    <div className="rounded-3xl bg-black/[0.04] p-5 mb-8">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <div className="dsc-label text-black/40">Visits</div>
+        {summary.lastAttended && (
+          <div className="dsc-label text-black/40">
+            Last came{' '}
+            {new Date(summary.lastAttended).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Stat n={summary.attended} label="came" />
+        <Stat n={summary.noShows} label="no-shows" />
+        <Stat n={summary.notRecorded} label="not recorded" />
+      </div>
+      <div className="divide-y divide-black/5">
+        {shown.map((v) => (
+          <div key={v.sessionId + v.at} className="py-2 flex items-center justify-between gap-3 text-sm">
+            <div className="min-w-0">
+              <span className="font-mono text-xs text-black/60">
+                {new Date(v.at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-black/70 ml-2 truncate">
+                {v.groupName ?? v.coach}
+                {v.dropIn ? ' · drop-in' : ''}
+              </span>
+            </div>
+            <span className={`dsc-label shrink-0 ${tone[v.status]}`}>{label[v.status]}</span>
+          </div>
+        ))}
+      </div>
+      {visits.length > 8 && (
+        <button
+          onClick={() => setShowAll((x) => !x)}
+          className="dsc-label text-black/50 hover:text-black mt-2"
+        >
+          {showAll ? 'Show fewer' : `Show all ${visits.length}`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Stat({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="rounded-2xl bg-white px-3 py-2">
+      <div className="dsc-headline text-2xl text-black leading-none">{n}</div>
+      <div className="dsc-label text-black/40 mt-1">{label}</div>
     </div>
   )
 }

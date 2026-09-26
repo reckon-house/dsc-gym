@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { AttendanceSheet } from '@/components/AttendanceSheet'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
@@ -85,6 +86,12 @@ export default function AdminHome() {
   const [trainers, setTrainers] = useState<TrainerOption[]>([])
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([])
   const [classRequests, setClassRequests] = useState<ClassRequest[]>([])
+  const [absent, setAbsent] = useState<
+    { athleteId: string; name: string; daysAway: number; confirmed: boolean; nextSession: string | null; recentNoShows: number }[]
+  >([])
+  const [lapsed, setLapsed] = useState(0)
+  const [owed, setOwed] = useState<{ id: string; scheduledAt: string; coach: string; label: string }[]>([])
+  const [attendanceFor, setAttendanceFor] = useState<string | null>(null)
   const [extraVisits, setExtraVisits] = useState<
     { athleteId: string; name: string; extraVisits: number }[]
   >([])
@@ -97,13 +104,15 @@ export default function AdminHome() {
   >(null)
 
   const loadAuxiliary = useCallback(async () => {
-    const [t, w, u, br, ev, gr] = await Promise.all([
+    const [t, w, u, br, ev, gr, ab, ow] = await Promise.all([
       fetch('/api/trainers').then((r) => r.json()),
       fetch('/api/walkins').then((r) => r.json()),
       fetch('/api/athletes?unassigned=true').then((r) => r.json()),
       fetch('/api/admin/booking-requests').then((r) => r.json()),
       fetch('/api/admin/attendance/extra?days=30').then((r) => r.json()),
       fetch('/api/admin/group-requests').then((r) => r.json()),
+      fetch('/api/admin/attendance/absent?days=14').then((r) => r.json()),
+      fetch('/api/attendance/owed').then((r) => r.json()),
     ])
     if (t.success) setTrainers(t.data)
     if (w.success) setWalkIns(w.data)
@@ -111,6 +120,11 @@ export default function AdminHome() {
     if (br.success) setBookingRequests(br.data)
     if (ev.success) setExtraVisits(ev.data.rows)
     if (gr.success) setClassRequests(gr.data)
+    if (ab.success) {
+      setAbsent(ab.data.rows)
+      setLapsed(ab.data.lapsed ?? 0)
+    }
+    if (ow.success) setOwed(ow.data)
   }, [])
 
   function summarizeRequest(r: BookingRequest): RequestSummary {
@@ -273,7 +287,9 @@ export default function AdminHome() {
         unassigned.length > 0 ||
         bookingRequests.length > 0 ||
         classRequests.length > 0 ||
-        extraVisits.length > 0) && (
+        extraVisits.length > 0 ||
+        absent.length > 0 ||
+        owed.length > 0) && (
         <div className="px-4 space-y-2 pb-2">
           {classRequests.length > 0 && (
             <ClassRequestsBox
@@ -290,6 +306,77 @@ export default function AdminHome() {
               onDecline={declineRequest}
               resolving={resolvingReq}
             />
+          )}
+          {absent.length > 0 && (
+            <div className="px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 max-w-3xl mx-auto">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-amber-600" aria-hidden />
+                <span className="dsc-label text-amber-900">
+                  Haven&rsquo;t been in for 2+ weeks · {absent.length}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/70 mb-2">
+                Worth a check-in call, most recent first. &ldquo;Not confirmed&rdquo; means
+                their last session never had attendance taken.
+                {lapsed > 0 && ` ${lapsed} more haven't been in for 3+ months and aren't listed.`}
+              </p>
+              <div className="space-y-2">
+                {absent.slice(0, 6).map((r) => (
+                  <Link
+                    key={r.athleteId}
+                    href={`/admin/athletes/${r.athleteId}`}
+                    className="bg-white rounded-2xl p-3 flex items-center gap-3 hover:bg-black/[0.02]"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-black truncate font-medium">{r.name}</div>
+                      <div className="text-xs text-black/50 truncate">
+                        {r.nextSession
+                          ? `Next booked ${new Date(r.nextSession).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+                          : 'Nothing booked'}
+                        {r.recentNoShows > 0 ? ` · ${r.recentNoShows} no-show${r.recentNoShows === 1 ? '' : 's'}` : ''}
+                        {!r.confirmed ? ' · not confirmed' : ''}
+                      </div>
+                    </div>
+                    <span className="dsc-label text-black/60 shrink-0">{r.daysAway}d</span>
+                  </Link>
+                ))}
+                {absent.length > 6 && (
+                  <div className="dsc-label text-amber-900/60 text-center pt-1">
+                    + {absent.length - 6} more — ask the scheduler for the full list
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {owed.length > 0 && (
+            <div className="px-4 py-3 rounded-2xl bg-black/[0.05] border border-black/10 max-w-3xl mx-auto">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-black" aria-hidden />
+                <span className="dsc-label text-black">Attendance not taken · {owed.length}</span>
+              </div>
+              <div className="space-y-2">
+                {owed.slice(0, 5).map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setAttendanceFor(o.id)}
+                    className="w-full bg-white rounded-2xl p-3 flex items-center gap-3 hover:bg-black/[0.02] text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-black truncate font-medium">{o.label}</div>
+                      <div className="text-xs text-black/50 truncate">
+                        {new Date(o.scheduledAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {' · '}{o.coach}
+                      </div>
+                    </div>
+                    <span className="dsc-label text-black/60 shrink-0">Take it</span>
+                  </button>
+                ))}
+                {owed.length > 5 && (
+                  <div className="dsc-label text-black/50 text-center pt-1">+ {owed.length - 5} more</div>
+                )}
+              </div>
+            </div>
           )}
           {extraVisits.length > 0 && (
             <div className="px-4 py-3 rounded-2xl bg-black/[0.05] border border-black/10 max-w-3xl mx-auto">
@@ -391,6 +478,15 @@ export default function AdminHome() {
           ))}
         </div>
       </section>
+
+      <AttendanceSheet
+        sessionId={attendanceFor}
+        open={attendanceFor !== null}
+        onClose={() => setAttendanceFor(null)}
+        onSaved={() => {
+          void loadAuxiliary()
+        }}
+      />
 
       {/* Gym photo footer */}
       <div className="mt-auto px-4 pb-4">
